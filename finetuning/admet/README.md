@@ -135,8 +135,6 @@ Feature encoders without an Equiformer body skip block/grid optimizations.
 BF16 and reordered arithmetic can change rounding and training trajectories;
 measure steady-state speed and validation quality before comparing full runs.
 
-Run `python -m unittest discover -s finetuning/admet/tests -v` for regressions.
-The CUDA BF16/Inductor test skips when no CUDA GPU is available.
 The cuEquivariance tests check output/gradient parity, per-model isolation,
 checkpoint compatibility, single-task heads, and empty-edge graphs. Integration
 was also tested through a complete Biogen training/evaluation epoch and a
