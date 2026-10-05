@@ -4,21 +4,22 @@
   <a href="todo"><img src="https://img.shields.io/badge/Paper-TODO-blue" alt="Paper"></a>
   <a href="todo"><img src="https://img.shields.io/badge/Website-TODO-green" alt="Website"></a>
   <a href="https://huggingface.co/atom-jepa/atom-jepa"><img src="https://img.shields.io/badge/Models-Hugging%20Face-orange" alt="Models"></a>
-  <a href="https://pypi.org/project/atom-jepa/"><img src="https://img.shields.io/pypi/v/atom-jepa?label=PyPI&color=blueviolet" alt="PyPI"></a>
+  <a href="https://pypi.org/project/atom-jepa/"><img src="https://img.shields.io/badge/PyPI-atom--jepa-blueviolet" alt="PyPI"></a>
 </p>
 
 Official implementation of **Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems**.
 
 Atom-JEPA is a self-supervised pretraining method for 3D atomistic systems.
 It learns by predicting the latent representations of one part of a structure
-from another. The same recipe applies to both molecules and crystals. This repository contains code for:
+from another. The same recipe applies to both molecules and crystals.
 
-- **Pretraining** of an EquiformerV3 encoder (based on [atomicarchitects/equiformer_v3](https://github.com/atomicarchitects/equiformer_v3)) on Uni-Mol molecules or Alexandria crystals.
-- **Pretrained encoders** for molecules and crystals, on [Hugging Face](https://huggingface.co/atom-jepa/atom-jepa).
-- A **Python package**, [`atom-jepa`](https://pypi.org/project/atom-jepa/) on PyPI, to embed structures and fine-tune the encoders in your own code.
-- **Fine-tuning** on QM9, MatBench and ADMET benchmarks (TDC ADMET group, Biogen ADME, ChEMBL-MT, ExpansionRx).
-- **Frozen-encoder probes** and fingerprint/descriptor baselines.
-- A **notebook** that turns a SMILES string into an Atom-JEPA embedding.
+There are two ways to use Atom-JEPA:
+
+- **The `atom-jepa` Python package** ([PyPI](https://pypi.org/project/atom-jepa/)): `pip install`
+  it to load the [pretrained encoders](https://huggingface.co/atom-jepa/atom-jepa), embed molecules
+  and crystals, and fine-tune the encoder in your own code. See [Python package](#python-package).
+- **This repository**: clone it to pretrain encoders, which only the repository supports, and to
+  run the benchmark fine-tuning from the paper. See [Using this repository](#using-this-repository).
 
 ![Atom-JEPA architecture overview](assets/atom-jepa-figure.png)
 
@@ -32,17 +33,144 @@ for downstream property prediction.</sub>
 
 ## Contents
 
-- [Repository layout](#repository-layout)
-- [Installation](#installation)
 - [Pretrained models](#pretrained-models)
 - [Python package](#python-package)
-- [Pretraining](#pretraining)
-- [Fine-tuning](#fine-tuning)
-- [Embeddings from a SMILES string](#embeddings-from-a-smiles-string)
+- [Using this repository](#using-this-repository): installation, layout, pretraining, fine-tuning, notebook
 - [License](#license)
 - [Citation](#citation)
 
-## Repository layout
+## Pretrained models
+
+The pretrained encoders are on Hugging Face at [atom-jepa/atom-jepa](https://huggingface.co/atom-jepa/atom-jepa):
+
+| name | domain | pretraining data |
+|---|---|---|
+| `molecules` | molecules | Uni-Mol, 19M molecules |
+| `crystals` | inorganic crystals | Alexandria PBE 3D, 1.7M crystals |
+
+Both the package and the repository's scripts load them by name and download the weights
+on first use. The encoder is EquiformerV3, based on
+[atomicarchitects/equiformer_v3](https://github.com/atomicarchitects/equiformer_v3).
+
+## Python package
+
+[`atom-jepa`](https://pypi.org/project/atom-jepa/) is for using the pretrained encoders:
+embedding molecules and crystals, and fine-tuning the encoder with your own head and
+training loop. Pretraining and the paper's benchmark scripts are in the
+[repository](#using-this-repository).
+
+### Installation
+
+Install [PyTorch](https://pytorch.org/get-started/locally/) first, then:
+
+```bash
+pip install atom-jepa            # structures as arrays or ase.Atoms
+pip install "atom-jepa[rdkit]"   # + SMILES input
+pip install "atom-jepa[all]"     # + SMILES and pymatgen input
+pip install "atom-jepa[cu12]"    # + cuEquivariance GPU kernels for CUDA 12 ([cu13] for CUDA 13)
+```
+
+Extras combine, e.g. `"atom-jepa[all,cu12]"`; `python -m atom_jepa.info` shows what your
+machine supports and which kernel extra matches your PyTorch.
+
+### Embeddings
+
+```python
+from atom_jepa import AtomJEPA
+
+model = AtomJEPA.from_pretrained("molecules")      # or "crystals", or a local checkpoint
+smiles = ["CCO", "c1ccncc1"]
+
+model.embed(smiles)                                  # [2, 256]        last layer, l=0
+model.embed(smiles, layers="all")                    # [2, 8, 256]     output of each of the 8 blocks
+model.embed(smiles, degrees="all")                   # [2, 9, 256]     l=0, l=1 (3), l=2 (5) components
+model.embed(smiles, degrees="all", invariant=True)   # [2, 3, 256]     l=0 and per-channel norms of l=1, l=2
+model.embed(smiles, per_atom=True)                   # list of [n_atoms, 256]
+```
+
+- `embed` takes SMILES strings (one RDKit ETKDGv3 + MMFF94 conformer), `ase.Atoms`,
+  pymatgen structures, or `(atomic_numbers, positions[, cell])`, one at a time or as a list.
+- `layers` is `"last"` (default: the last block after the final norm), block numbers 1-8,
+  or `"all"`; `degrees` is 0 (default), a list of l's, or `"all"`. Structure features are
+  the mean over atoms.
+- The l>0 components are equivariant (l=1 rotates like an (x, y, z) vector);
+  `invariant=True` makes them rotation invariant.
+
+### Fine-tuning in your own code
+
+`AtomJEPA` is a `torch.nn.Module`: calling it on a batch returns differentiable features
+with the same options, so you can train your own head together with the encoder:
+
+```python
+import torch
+from torch.utils.data import DataLoader
+from atom_jepa import AtomJEPA, to_sample
+
+model = AtomJEPA.from_pretrained("molecules").train()
+head = torch.nn.Linear(model.embedding_dim, 1).to(model.device)
+
+data = [{**to_sample(s), "y": torch.tensor([y])} for s, y in zip(train_smiles, train_y)]
+loader = DataLoader(data, batch_size=32, shuffle=True, collate_fn=model.collate)
+opt = torch.optim.AdamW([{"params": model.parameters(), "lr": 1e-5},
+                         {"params": head.parameters(), "lr": 1e-3}])
+for batch in loader:
+    loss = torch.nn.functional.mse_loss(head(model(batch)), batch["y"].to(model.device))
+    opt.zero_grad(); loss.backward(); opt.step()
+```
+
+`model.set_grad_checkpointing(True)` trades compute for memory on large structures.
+
+### Execution on GPU
+
+On a CUDA GPU the encoder runs in bf16 and, if the kernels are installed, with
+cuEquivariance; otherwise it runs in plain fp32 PyTorch. The settings are printed when
+loading and can be set explicitly:
+
+```python
+model = AtomJEPA.from_pretrained("molecules")                        # auto
+# [atom-jepa] molecules: device=cuda, precision=bf16, cuequivariance=on, compile=off
+#   we recommend compile=True for larger jobs
+model = AtomJEPA.from_pretrained("molecules", compile=True)          # compile the blocks (CUDA)
+model = AtomJEPA.from_pretrained("molecules", precision="fp32", cuequivariance=False)  # plain
+```
+
+bf16 changes the embeddings slightly; use `precision="fp32"` for exact fp32 features.
+Compiling adds a one-off cost on the first batches.
+
+## Using this repository
+
+The repository has the pretraining code, which the package does not include, and the
+fine-tuning, probing and baseline scripts used for the paper's benchmarks. The model code
+is the same `atom_jepa` package.
+
+### Installation
+
+Clone the repository. You need Python 3.12, PyTorch 2.x with CUDA, and PyTorch Geometric.
+Then install the remaining dependencies from [requirements.txt](requirements.txt):
+
+```bash
+git clone https://github.com/khelverskovp/atom-jepa.git && cd atom-jepa
+python -m pip install -r requirements.txt
+```
+
+Run all commands from the repository root. Any config option can be overridden on the
+command line with Hydra syntax, e.g. `optim.lr=1e-4`. Runs log to Weights & Biases by
+default; add `wandb.enabled=false` to any command to turn this off.
+
+**Fast fine-tuning (recommended).** By default, the fine-tuning scripts run the encoder
+with bf16, compiled transformer blocks and cuEquivariance kernels for speed. These
+defaults need the CUDA 13 packages:
+
+```bash
+python -m pip install -r finetuning/requirements-cue-cu13.txt
+```
+
+For CUDA 12, use the matching `cu12` wheels. To run without them, set
+`cuequivariance=false` and `compile_blocks=false` in the task's config section, e.g.
+`finetune.cuequivariance=false finetune.compile_blocks=false` for QM9 and ADMET, or
+`matbench.cuequivariance=false matbench.compile_blocks=false` for MatBench.
+
+### Repository layout
 
 ```
 atom-jepa/
@@ -77,130 +205,7 @@ atom-jepa/
 └── .github/workflows/        builds, tests and publishes the package to PyPI
 ```
 
-Run all commands from the repository root. Any config option can be overridden on
-the command line with Hydra syntax, e.g. `optim.lr=1e-4`.
-
-## Installation
-
-**Python package.** To use the pretrained encoders in your own code, install the package
-from PyPI; see [Python package](#python-package).
-
-**Pretraining and fine-tuning.** Clone this repository. You need Python 3.12, PyTorch 2.x with CUDA, and PyTorch Geometric. Then install
-the remaining dependencies from [requirements.txt](requirements.txt):
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-Runs log to Weights & Biases by default. Add `wandb.enabled=false` to any command to turn this off.
-
-**Fast fine-tuning (recommended).** By default, the fine-tuning scripts run the encoder with bf16,
-compiled transformer blocks and cuEquivariance kernels for speed. These defaults need
-the CUDA 13 packages:
-
-```bash
-python -m pip install -r finetuning/requirements-cue-cu13.txt
-```
-
-For CUDA 12, use the matching `cu12` wheels. To run without them, set
-`cuequivariance=false` and `compile_blocks=false` in the task's config section, e.g.
-`finetune.cuequivariance=false finetune.compile_blocks=false` for QM9 and ADMET, or
-`matbench.cuequivariance=false matbench.compile_blocks=false` for MatBench.
-
-## Pretrained models
-
-The pretrained encoders are on Hugging Face at [atom-jepa/atom-jepa](https://huggingface.co/atom-jepa/atom-jepa):
-
-| name | domain | pretraining data |
-|---|---|---|
-| `molecules` | molecules | Uni-Mol, 19M molecules |
-| `crystals` | inorganic crystals | Alexandria PBE 3D, 1.7M crystals |
-
-Load them by name with the [Python package](#python-package), or pass the name as
-`ckpt_path` in the fine-tuning commands below. The weights are downloaded and cached on
-first use.
-
-## Python package
-
-[`atom-jepa`](https://pypi.org/project/atom-jepa/) loads the pretrained encoders, embeds
-molecules and crystals, and exposes the encoder as a PyTorch module for fine-tuning.
-Install [PyTorch](https://pytorch.org/get-started/locally/) first, then:
-
-```bash
-pip install atom-jepa            # structures as arrays or ase.Atoms
-pip install "atom-jepa[rdkit]"   # + SMILES input
-pip install "atom-jepa[all]"     # + SMILES and pymatgen input
-pip install "atom-jepa[cu12]"    # + cuEquivariance GPU kernels for CUDA 12 ([cu13] for CUDA 13)
-```
-
-Extras combine, e.g. `"atom-jepa[all,cu12]"`; `python -m atom_jepa.info` shows what your
-machine supports and which kernel extra matches your PyTorch.
-
-**Embeddings.**
-
-```python
-from atom_jepa import AtomJEPA
-
-model = AtomJEPA.from_pretrained("molecules")      # or "crystals", or a local checkpoint
-smiles = ["CCO", "c1ccncc1"]
-
-model.embed(smiles)                                  # [2, 256]        last layer, l=0
-model.embed(smiles, layers="all")                    # [2, 8, 256]     output of each of the 8 blocks
-model.embed(smiles, degrees="all")                   # [2, 9, 256]     l=0, l=1 (3), l=2 (5) components
-model.embed(smiles, degrees="all", invariant=True)   # [2, 3, 256]     l=0 and per-channel norms of l=1, l=2
-model.embed(smiles, per_atom=True)                   # list of [n_atoms, 256]
-```
-
-- `embed` takes SMILES strings (one RDKit ETKDGv3 + MMFF94 conformer), `ase.Atoms`,
-  pymatgen structures, or `(atomic_numbers, positions[, cell])`, one at a time or as a list.
-- `layers` is `"last"` (default: the last block after the final norm), block numbers 1-8,
-  or `"all"`; `degrees` is 0 (default), a list of l's, or `"all"`. Structure features are
-  the mean over atoms.
-- The l>0 components are equivariant (l=1 rotates like an (x, y, z) vector);
-  `invariant=True` makes them rotation invariant.
-
-**Fine-tuning.** `AtomJEPA` is a `torch.nn.Module`: calling it on a batch returns
-differentiable features with the same options, so you can train your own head together
-with the encoder:
-
-```python
-import torch
-from torch.utils.data import DataLoader
-from atom_jepa import AtomJEPA, to_sample
-
-model = AtomJEPA.from_pretrained("molecules").train()
-head = torch.nn.Linear(model.embedding_dim, 1).to(model.device)
-
-data = [{**to_sample(s), "y": torch.tensor([y])} for s, y in zip(train_smiles, train_y)]
-loader = DataLoader(data, batch_size=32, shuffle=True, collate_fn=model.collate)
-opt = torch.optim.AdamW([{"params": model.parameters(), "lr": 1e-5},
-                         {"params": head.parameters(), "lr": 1e-3}])
-for batch in loader:
-    loss = torch.nn.functional.mse_loss(head(model(batch)), batch["y"].to(model.device))
-    opt.zero_grad(); loss.backward(); opt.step()
-```
-
-The benchmark recipes from the paper are the [fine-tuning scripts](#fine-tuning) of this
-repository.
-
-**Execution.**
-
-On a CUDA GPU the encoder runs in bf16 and, if the kernels are installed, with
-cuEquivariance; otherwise it runs in plain fp32 PyTorch. The settings are printed when
-loading and can be set explicitly:
-
-```python
-model = AtomJEPA.from_pretrained("molecules")                        # auto
-# [atom-jepa] molecules: device=cuda, precision=bf16, cuequivariance=on, compile=off
-#   we recommend compile=True for larger jobs
-model = AtomJEPA.from_pretrained("molecules", compile=True)          # compile the blocks (CUDA)
-model = AtomJEPA.from_pretrained("molecules", precision="fp32", cuequivariance=False)  # plain
-```
-
-bf16 changes the embeddings slightly; use `precision="fp32"` for exact
-fp32 features. Compiling adds a one-off cost on the first batches.
-
-## Pretraining
+### Pretraining
 
 ```bash
 python -m pretraining.train data=unimol       # Uni-Mol molecules (default; set data.lmdb_paths)
@@ -229,11 +234,12 @@ Materials Project property for crystal runs. Checkpoints go to `checkpoints/`:
 
 To pretrain on another dataset, see [data/README.md](data/README.md).
 
-## Fine-tuning
+### Fine-tuning
 
-Each fine-tuning script takes a pretrained encoder as its checkpoint, given as either:
-- a released encoder from [Hugging Face](https://huggingface.co/atom-jepa/atom-jepa), named
-  `molecules` or `crystals`, which is downloaded and cached on first use; or
+These are the benchmark recipes from the paper. Each script takes a pretrained encoder
+as its checkpoint, given as either:
+- a released encoder, `molecules` or `crystals`, downloaded from
+  [Hugging Face](https://huggingface.co/atom-jepa/atom-jepa) and cached on first use; or
 - a local checkpoint from your own pretraining run, e.g. `checkpoints/context_encoder_<run>.pt`.
 
 **QM9** (one target per run: `mu alpha homo lumo gap r2 zpve U0 U H G Cv`):
@@ -269,7 +275,7 @@ python -m finetuning.probing.qm9_frozen_encoder_probe finetune.ckpt_path=molecul
 To fine-tune the same architecture from a random initialization (no pretraining), add
 `finetune.train_from_scratch=true` (QM9) or `matbench.train_from_scratch=true` (MatBench).
 
-## Embeddings from a SMILES string
+### Embeddings notebook
 
 [`notebooks/molecule_to_jepa_embedding.ipynb`](notebooks/molecule_to_jepa_embedding.ipynb)
 does the following:
