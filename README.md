@@ -126,8 +126,11 @@ emb = model.embed(["CCO", "c1ccncc1"])           # [2, 256]
 ```
 
 `embed` takes SMILES strings, `ase.Atoms`, pymatgen structures, or
-`(atomic_numbers, positions[, cell])`, one at a time or as a list; `per_atom=True`
-returns per-atom features instead. The same names work as `ckpt_path` in the fine-tuning
+`(atomic_numbers, positions[, cell])`, one at a time or as a list. Options select the
+layers (`layers="all"` for all 8 blocks), the irrep degrees (`degrees="all"`, optionally
+`invariant=True`) and per-atom features (`per_atom=True`). `AtomJEPA` is also a
+`torch.nn.Module` for fine-tuning in your own training loop; see the
+[package README](README.pypi.md). The same names work as `ckpt_path` in the fine-tuning
 commands below, and in the notebook.
 
 ## Pretraining

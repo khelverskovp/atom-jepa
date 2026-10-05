@@ -33,7 +33,11 @@ jobs:
           cd /tmp && python -c "
           from ase.build import bulk
           from atom_jepa import AtomJEPA
-          assert AtomJEPA.from_pretrained('molecules', device='cpu').embed(['CCO', 'c1ccncc1']).shape == (2, 256)
+          m = AtomJEPA.from_pretrained('molecules', device='cpu')
+          assert m.embed(['CCO', 'c1ccncc1']).shape == (2, 256)
+          assert m.embed(['CCO', 'c1ccncc1'], layers='all', degrees='all').shape == (2, 8, 9, 256)
+          assert m.embed('CCO', degrees='all', invariant=True).shape == (3, 256)
+          m.train()(m.collate(['CCO', 'c1ccncc1'])).sum().backward()
           assert AtomJEPA.from_pretrained('crystals', device='cpu').embed(bulk('NaCl', 'rocksalt', a=5.64)).shape == (256,)
           "
       - uses: actions/upload-artifact@v4
