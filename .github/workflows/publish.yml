@@ -1,0 +1,72 @@
+# Build and test the atom-jepa package, then publish it with PyPI trusted publishing:
+#   push a tag vX.Y.Z               -> TestPyPI
+#   publish a GitHub release vX.Y.Z -> PyPI
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the tag matches the package version
+        run: |
+          version=$(grep -oP '__version__ = "\K[^"]+' atom_jepa/__init__.py)
+          test "${GITHUB_REF_NAME}" = "v${version}" || { echo "tag ${GITHUB_REF_NAME} != v${version}"; exit 1; }
+      - name: Build
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Test the wheel
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "$(ls dist/*.whl)[all]"
+          cd /tmp && python -c "
+          from ase.build import bulk
+          from atom_jepa import AtomJEPA
+          assert AtomJEPA.from_pretrained('molecules', device='cpu').embed(['CCO', 'c1ccncc1']).shape == (2, 256)
+          assert AtomJEPA.from_pretrained('crystals', device='cpu').embed(bulk('NaCl', 'rocksalt', a=5.64)).shape == (256,)
+          "
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
