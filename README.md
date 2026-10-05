@@ -13,7 +13,7 @@ Atom-JEPA is a self-supervised pretraining method for 3D atomistic systems.
 It learns by predicting the latent representations of one part of a structure
 from another. The same recipe applies to both molecules and crystals. This repository contains code for:
 
-- **Pretraining** of an EquiformerV3 encoder on Uni-Mol molecules or Alexandria crystals.
+- **Pretraining** of an EquiformerV3 encoder (based on [atomicarchitects/equiformer_v3](https://github.com/atomicarchitects/equiformer_v3)) on Uni-Mol molecules or Alexandria crystals.
 - **Pretrained encoders** for molecules and crystals, on [Hugging Face](https://huggingface.co/atom-jepa/atom-jepa).
 - A **Python package**, [`atom-jepa`](https://pypi.org/project/atom-jepa/) on PyPI, to embed structures and fine-tune the encoders in your own code.
 - **Fine-tuning** on QM9, MatBench and ADMET benchmarks (TDC ADMET group, Biogen ADME, ChEMBL-MT, ExpansionRx).
