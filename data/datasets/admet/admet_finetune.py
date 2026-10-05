@@ -13,7 +13,7 @@ Commons ADMET benchmark group. Differences from the QM9 version:
     the one-hot vocabulary entirely (no make_idx_to_z / SYMBOL_TO_Z step) -- this
     makes element coverage exact and immune to vocab gaps for the wider element
     set in drug-like molecules (S, Cl, Br, I, P, ...). `node_features` is kept
-    only as a structural placeholder so data.core.collate.collate_graphs can count nodes.
+    only as a structural placeholder so atom_jepa.data.collate.collate_graphs can count nodes.
   * Splits come from TDC's scaffold split by default (train/valid partition of
     train_val is structurally disjoint), not a random index split -- toggled
     via `finetune.scaffold_split` in the Hydra config (see get_train_valid).
@@ -47,8 +47,8 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from torch.utils.data import Dataset
 
-from data.core.collate import collate_graphs
-from data.core.graphs import radius_graph
+from atom_jepa.data.collate import collate_graphs
+from atom_jepa.data.graphs import radius_graph
 from data.datasets.admet.admet_conformers import build_or_load_conformers
 
 
@@ -210,7 +210,7 @@ class ADMETFinetuneDataset(Dataset):
 def admet_collate(mols: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
     """Base graph collation + the concatenated per-atom `atomic_numbers`.
 
-    data.core.collate.collate_graphs handles node_features/coords/edges/graph_index and
+    atom_jepa.data.collate.collate_graphs handles node_features/coords/edges/graph_index and
     stacks mol["y"] into [G, 1]. It iterates `mols` in order, so concatenating
     atomic_numbers in the SAME order keeps them row-aligned with the batched
     nodes. We attach Z directly (no one-hot argmax) for exact element fidelity."""

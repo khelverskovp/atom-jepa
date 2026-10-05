@@ -43,6 +43,12 @@ for downstream property prediction.</sub>
 
 ```
 atom-jepa/
+├── atom_jepa/                the pip package: model, graphs, batching, checkpoint loading
+│   ├── api.py                AtomJEPA: load a pretrained encoder and embed structures
+│   ├── checkpoint.py         load released (Hugging Face) or local checkpoints
+│   ├── conformers.py         SMILES -> 3D conformers (RDKit ETKDGv3 + MMFF94)
+│   ├── models/               JEPA encoder and predictor, EquiformerV3 backbone and layers
+│   └── data/                 graphs, masking, batching, splits (dataset-independent)
 ├── pretraining/
 │   ├── train.py              JEPA pretraining (single- and multi-GPU)
 │   ├── probe.py              frozen-encoder probes run during pretraining
@@ -52,14 +58,10 @@ atom-jepa/
 │   ├── matbench/             MatBench fine-tuning
 │   ├── admet/                ADMET fine-tuning, baselines and HPO (see finetuning/admet/README.md)
 │   ├── probing/              frozen-encoder readout probe on QM9
-│   ├── common.py             encoder loading and batching shared by all tasks
+│   ├── common.py             helpers shared by the fine-tuning scripts
 │   ├── execution.py, cue.py  bf16, torch.compile and cuEquivariance execution
 │   └── requirements-cue-cu13.txt
-├── models/
-│   ├── jepa_equiformer.py    JEPA encoder and predictor
-│   ├── eqv3_backbone.py      headless EquiformerV3 backbone
-│   └── equiformer_v3/        EquiformerV3 layers
-├── data/                     graphs, masking, batching and dataset loaders (see data/README.md)
+├── data/                     dataset loaders (see data/README.md)
 ├── conf/                     Hydra configs
 │   ├── pretrain.yaml         pretraining; conf/data/<dataset>.yaml selects the dataset
 │   ├── finetune_*.yaml       one per fine-tuning benchmark
@@ -74,7 +76,16 @@ the command line with Hydra syntax, e.g. `optim.lr=1e-4`.
 
 ## Installation
 
-You need Python 3.12, PyTorch 2.x with CUDA, and PyTorch Geometric. Then install
+**Embeddings only.** To embed molecules and crystals with the pretrained encoders, install
+the package (after installing [PyTorch](https://pytorch.org/get-started/locally/)):
+
+```bash
+pip install "atom-jepa[rdkit]"    # [rdkit] adds SMILES input, [all] also pymatgen input
+```
+
+See [Pretrained models](#pretrained-models) for usage.
+
+**Pretraining and fine-tuning.** Clone this repository. You need Python 3.12, PyTorch 2.x with CUDA, and PyTorch Geometric. Then install
 the remaining dependencies from [requirements.txt](requirements.txt):
 
 ```bash
@@ -105,16 +116,19 @@ The pretrained encoders are on Hugging Face at [atom-jepa/atom-jepa](https://hug
 | `molecules` | molecules | Uni-Mol, 19M molecules |
 | `crystals` | inorganic crystals | Alexandria PBE 3D, 1.7M crystals |
 
-Pass the name wherever a checkpoint is expected. The weights are downloaded and cached
-on first use:
+The weights are downloaded and cached on first use:
 
 ```python
-from finetuning.common import load_pretrained_encoder
+from atom_jepa import AtomJEPA
 
-encoder, config, _ = load_pretrained_encoder("molecules", "cuda")   # or "crystals"
+model = AtomJEPA.from_pretrained("molecules")    # or "crystals"
+emb = model.embed(["CCO", "c1ccncc1"])           # [2, 256]
 ```
 
-The same names work as `ckpt_path` in the fine-tuning commands below, and in the notebook.
+`embed` takes SMILES strings, `ase.Atoms`, pymatgen structures, or
+`(atomic_numbers, positions[, cell])`, one at a time or as a list; `per_atom=True`
+returns per-atom features instead. The same names work as `ckpt_path` in the fine-tuning
+commands below, and in the notebook.
 
 ## Pretraining
 

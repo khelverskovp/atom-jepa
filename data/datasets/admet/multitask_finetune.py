@@ -29,7 +29,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from data.core.collate import collate_graphs
+from atom_jepa.data.collate import collate_graphs
 from data.datasets.admet.admet_finetune import featurize_mol, _cap
 
 
@@ -247,7 +247,7 @@ class MultiTaskFinetuneDataset(Dataset):
 
 def multitask_collate(mols: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
     """Base graph collation + concatenated atomic_numbers (as admet_collate) + the
-    stacked [G, n_tasks] label mask (data.core.collate.collate_graphs already stacks `y`
+    stacked [G, n_tasks] label mask (atom_jepa.data.collate.collate_graphs already stacks `y`
     generically into [G, P], but has no notion of `y_mask`).
 
     mol_features/mol_features_valid are stacked CONDITIONALLY, present iff the

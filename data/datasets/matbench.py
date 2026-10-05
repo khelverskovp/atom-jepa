@@ -16,8 +16,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import torch
 from torch.utils.data import Dataset
 
-from data.core.collate import GraphCollator
-from data.core.structures import load_matminer, structure_to_sample
+from atom_jepa.data.collate import GraphCollator
+from atom_jepa.data.structures import load_matminer, structure_to_sample
 
 
 # --------------------------------------------------------------------------- #

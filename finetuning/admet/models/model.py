@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-from models.jepa_equiformer import irrep_slices, pool_nodes
+from atom_jepa.models.jepa_equiformer import irrep_slices, pool_nodes
 
 _HO_NORM_EPS = 1e-8
 

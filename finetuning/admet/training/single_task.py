@@ -34,7 +34,7 @@ from finetuning.admet.training.helpers import (
 from finetuning.execution import configure_execution
 from finetuning.admet.training.loss import fit_target_stats, fwd_target, regression_loss
 from finetuning.admet.training.utils import _better, _worst, ema_update, move_batch
-from models.jepa_equiformer import EquiformerV3Encoder
+from atom_jepa.models.jepa_equiformer import EquiformerV3Encoder
 
 
 def train_seed(cfg, group, cname, seed, task: TaskSpec, S, conformers, eqv3_cfg, encoder_ckpt,

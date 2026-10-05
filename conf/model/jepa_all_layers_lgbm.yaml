@@ -4,7 +4,7 @@
 #
 # Same probe as jepa_last_layer_lgbm's sibling config, except the feature is
 # the l=0 scalar from EVERY transformer block (encoder.encode_nodes_all_layers,
-# models/jepa_equiformer.py), depth-concatenated and mean-pooled per molecule
+# atom_jepa/models/jepa_equiformer.py), depth-concatenated and mean-pooled per molecule
 # -- num_layers*C wide (2048 = 8*256 for the reference checkpoint) instead of
 # just the final block's C. Exists because early-block representations may
 # encode information that only becomes USEFUL once the encoder is fine-tuned

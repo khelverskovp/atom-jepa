@@ -1,14 +1,14 @@
 # Data
 
 ```
+atom_jepa/data/         dataset-independent pipeline (part of the atom_jepa package)
+  elements.py           element symbol <-> atomic number
+  graphs.py             radius graphs (molecular and periodic), minimum-image folding
+  masking.py            k-hop ego partitions for the JEPA views
+  collate.py            samples -> batches: GraphCollator, JEPACollator
+  splits.py             seeded random train/val/test splits
+  structures.py         pymatgen / matminer helpers for crystals
 data/
-  core/                 dataset-independent pipeline
-    elements.py         element symbol <-> atomic number
-    graphs.py           radius graphs (molecular and periodic), minimum-image folding
-    masking.py          k-hop ego partitions for the JEPA views
-    collate.py          samples -> batches: GraphCollator, JEPACollator
-    splits.py           seeded random train/val/test splits
-    structures.py       pymatgen / matminer helpers for crystals
   datasets/             one file per dataset
     __init__.py         pretraining registry (name -> class)
     qm9.py              QM9           molecules   pretraining, probe, fine-tuning
@@ -22,7 +22,7 @@ scripts/data/           Alexandria download / filter / LMDB conversion
 ```
 
 The ADMET loaders build their graphs in `__getitem__` from cached RDKit
-conformers and batch with `data.core.collate.collate_graphs`.
+conformers and batch with `atom_jepa.data.collate.collate_graphs`.
 
 ## Sample format
 

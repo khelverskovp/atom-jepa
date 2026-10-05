@@ -12,7 +12,7 @@ from torch import nn
 from finetuning.common import read_checkpoint
 from finetuning.optim import ema_update as ema_update
 
-from models.jepa_equiformer import EquiformerV3Config, EquiformerV3Encoder, pool_nodes
+from atom_jepa.models.jepa_equiformer import EquiformerV3Config, EquiformerV3Encoder, pool_nodes
 
 # Omit placeholder node features and coordinates when using precomputed GPU edges.
 _SKIP_KEYS = {"node_features", "node_coordinates"}

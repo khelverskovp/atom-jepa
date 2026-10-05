@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atom-jepa"
+dynamic = ["version"]
+description = "Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems"
+readme = "README.pypi.md"
+license = "MIT"
+license-files = ["LICENSE", "atom_jepa/models/equiformer_v3/LICENSE*"]
+requires-python = ">=3.10"
+authors = [{ name = "The Atom-JEPA authors" }]
+keywords = ["self-supervised learning", "JEPA", "equivariant neural networks",
+            "molecules", "crystals", "representation learning"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.1",
+    "numpy",
+    "e3nn",
+    "torch_geometric",
+    "ase",
+    "huggingface_hub",
+    "safetensors",
+]
+
+[project.optional-dependencies]
+rdkit = ["rdkit"]
+pymatgen = ["pymatgen"]
+all = ["rdkit", "pymatgen"]
+
+[project.urls]
+Homepage = "https://github.com/khelverskovp/atom-jepa"
+Repository = "https://github.com/khelverskovp/atom-jepa"
+Models = "https://huggingface.co/atom-jepa/atom-jepa"
+
+[tool.setuptools.packages.find]
+include = ["atom_jepa*"]
+
+[tool.setuptools.package-data]
+"atom_jepa.models.equiformer_v3" = ["Jd.pt", "LICENSE*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "atom_jepa.__version__" }

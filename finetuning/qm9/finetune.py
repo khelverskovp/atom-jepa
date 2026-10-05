@@ -17,10 +17,10 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, Subset
 
 import wandb
-from models.jepa_equiformer import EquiformerV3Encoder
-from data.core.collate import GraphCollator
+from atom_jepa.models.jepa_equiformer import EquiformerV3Encoder
+from atom_jepa.data.collate import GraphCollator
 from data.datasets.qm9 import QM9Dataset
-from data.core.splits import split_indices
+from atom_jepa.data.splits import split_indices
 from finetuning.common import load_pretrained_encoder, move_batch, resolve_device
 from finetuning.qm9.readouts import build_readout
 from finetuning.results_csv import append_row, encoder_tag

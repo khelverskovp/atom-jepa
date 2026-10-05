@@ -7,9 +7,9 @@ def enable_cue(body, *, device, encoder_eval_mode):
     """Install derived operators without changing learned weights or checkpoint keys."""
     if getattr(body, "admet_cue_enabled", False):
         return
-    from models.equiformer_v3.activation import SeparableGateS2Activation_SwiGLU_Merge
-    from models.equiformer_v3.transformer_block import GatedSwiGLUGridMLP
-    from models.equiformer_v3.so2_ops import SO2MLinear
+    from atom_jepa.models.equiformer_v3.activation import SeparableGateS2Activation_SwiGLU_Merge
+    from atom_jepa.models.equiformer_v3.transformer_block import GatedSwiGLUGridMLP
+    from atom_jepa.models.equiformer_v3.so2_ops import SO2MLinear
 
     rotation = body.so3_rotation
     if rotation.lmax != 2 or rotation.mmax != 2:
@@ -23,7 +23,7 @@ def enable_cue(body, *, device, encoder_eval_mode):
         if not encoder_eval_mode and (ffn.grid_mlp.dropout > 0 or not isinstance(ga.act.grid_drop, torch.nn.Identity)):
             raise ValueError("cuEquivariance requires inactive grid dropout")
     try:
-        from models.equiformer_v3.admet_cue_ops import (
+        from atom_jepa.models.equiformer_v3.admet_cue_ops import (
             CompactGatherScaleRotate, WeightedRotateReduce, GatedGridProduct,
             InitialRotateReduce, derived_operator,
         )

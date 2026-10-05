@@ -3,14 +3,14 @@
 The partition is chosen on a bond-scale TOPOLOGY graph, not the message-passing
 graph: the dataset's covalent bonds (`bond_edge_index`) when it has them,
 otherwise a radius graph at `topo_cutoff` (periodic for crystals). The two
-resulting views are rebuilt afterwards at the model cutoff (see data/core/collate.py).
+resulting views are rebuilt afterwards at the model cutoff (see atom_jepa/data/collate.py).
 """
 
 from typing import Dict, List, Tuple
 
 import torch
 
-from data.core.graphs import pbc_radius_graph, radius_graph
+from atom_jepa.data.graphs import pbc_radius_graph, radius_graph
 
 
 def _build_adjacency(edge_index: torch.Tensor, n: int) -> List[List[int]]:

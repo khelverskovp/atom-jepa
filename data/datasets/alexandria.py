@@ -270,7 +270,7 @@ class AlexandriaJSONDataset(Dataset):
         limit: Optional[int] = None,
     ):
         from pymatgen.core import Structure
-        from data.core.structures import structure_to_sample
+        from atom_jepa.data.structures import structure_to_sample
 
         files = _resolve_json_files(src)
         if not files:

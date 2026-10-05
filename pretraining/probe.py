@@ -16,8 +16,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 
-from data.core.collate import GraphCollator
-from data.core.splits import split_indices
+from atom_jepa.data.collate import GraphCollator
+from atom_jepa.data.splits import split_indices
 
 # QM9 single-atom reference energies in eV, keyed by atomic number (the values
 # torch_geometric's QM9.atomref() ships). y_atomization = y - sum_i atomref[Z_i].

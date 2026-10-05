@@ -221,7 +221,7 @@ finetune:
                                  #   params. See finetuning.admet.training.train's encoder_warmup_factor docstring.
                                  #
   grad_checkpointing: false
-  # See models/jepa_equiformer.py's drop_path_rate: the pretrained checkpoint
+  # See atom_jepa/models/jepa_equiformer.py's drop_path_rate: the pretrained checkpoint
   # carries 0.05, and it stays ACTIVE whenever the encoder is in train() mode
   # -- including during freeze_encoder_epochs (only requires_grad is toggled
   # there, not train()/eval()), so the head is fitted against a trunk emitting

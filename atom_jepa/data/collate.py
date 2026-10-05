@@ -23,8 +23,8 @@ from typing import Dict, List, Optional
 
 import torch
 
-from data.core.graphs import pbc_radius_graph, radius_graph
-from data.core.masking import ego_partition
+from atom_jepa.data.graphs import pbc_radius_graph, radius_graph
+from atom_jepa.data.masking import ego_partition
 
 # Per-atom / per-structure sample fields. Every other tensor field on a sample
 # is treated as a graph-level label and stacked along a new batch dimension.
@@ -177,3 +177,10 @@ class JEPACollator:
             full_target["anchor_a"] = torch.tensor(anchor_a, dtype=torch.long)
             full_target["anchor_b"] = torch.tensor(anchor_b, dtype=torch.long)
         return collate_graphs(a_graphs), collate_graphs(b_graphs), full_target
+
+
+def move_batch(batch, device):
+    return {
+        k: (v.to(device, non_blocking=True) if torch.is_tensor(v) else v)
+        for k, v in batch.items()
+    }

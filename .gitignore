@@ -27,10 +27,14 @@ admet_fragmentation.tex
 # Datasets and caches: everything under data/ except the code and its README
 data/*
 !data/README.md
-!data/core/
 !data/datasets/
 
 # Personal analysis scripts: everything in scripts/ except the package files and data tools
 scripts/*
 !scripts/__init__.py
 !scripts/data/
+
+# Python packaging build outputs
+build/
+dist/
+*.egg-info/

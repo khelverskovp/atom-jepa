@@ -27,7 +27,7 @@ from data.datasets.matbench import (
     MatBenchTaskSpec,
     load_matbench_fold,
 )
-from data.core.splits import split_indices
+from atom_jepa.data.splits import split_indices
 
 from finetuning.execution import configure_execution
 from finetuning.optim import build_adamw, ema_update

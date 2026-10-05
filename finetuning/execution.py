@@ -8,9 +8,9 @@ def configure_ema_buffers(model, ema_model):
     """Sync fixed Equiformer bases once; keep copying mutable/unknown buffers."""
     if ema_model is None:
         return
-    from models.equiformer_v3.layer_norm import EquivariantMergeLayerNorm
-    from models.equiformer_v3.radial_function import GaussianSmearing, RadialFunction
-    from models.equiformer_v3.so3 import SO3Grid, SO3Linear, SO3Rotation
+    from atom_jepa.models.equiformer_v3.layer_norm import EquivariantMergeLayerNorm
+    from atom_jepa.models.equiformer_v3.radial_function import GaussianSmearing, RadialFunction
+    from atom_jepa.models.equiformer_v3.so3 import SO3Grid, SO3Linear, SO3Rotation
 
     immutable = {
         GaussianSmearing: {"offset"},

@@ -21,11 +21,11 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
 import wandb
-from models.jepa_equiformer import (
+from atom_jepa.models.jepa_equiformer import (
     EquiformerV3Config, EquiformerV3Encoder, EquiformerV3Predictor, irrep_slices,
 )
-from data.core.collate import JEPACollator
-from data.core.graphs import min_image_delta
+from atom_jepa.data.collate import JEPACollator
+from atom_jepa.data.graphs import min_image_delta
 from data.datasets import build_pretraining_dataset
 from pretraining.probe import run_crystal_probe, run_qm9_probe
 from pretraining.metrics import rankme, alpha_req, vicreg_variance_loss, vicreg_covariance_loss

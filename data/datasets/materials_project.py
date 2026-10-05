@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from torch.utils.data import Dataset
 
-from data.core.structures import load_matminer, structure_to_sample
+from atom_jepa.data.structures import load_matminer, structure_to_sample
 
 # probe-target name -> default matminer release that ships structures + that label.
 _TARGET_TO_MATBENCH = {

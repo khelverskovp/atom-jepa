@@ -27,7 +27,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from torch.utils.data import Dataset
 
-from data.core.elements import SYMBOL_TO_Z, Z_TO_SYMBOL, symbols_to_z
+from atom_jepa.data.elements import SYMBOL_TO_Z, Z_TO_SYMBOL, symbols_to_z
 
 
 def _open_env(path):

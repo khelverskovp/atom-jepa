@@ -2,7 +2,7 @@
 Headless EquiformerV3 backbone.
 
 This assembles the EquiformerV3 components (taken from
-models/equiformer_v3/) into a body with no energy/force/stress heads. 
+atom_jepa/models/equiformer_v3/) into a body with no energy/force/stress heads. 
 It turns a molecular graph into a per-atom
 equivariant state and exposes the rotation-invariant (l=0) slice for pooling.
 

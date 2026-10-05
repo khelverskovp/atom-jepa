@@ -14,7 +14,7 @@ the representation help beyond a head on the frozen one".
 
 To keep them from drifting, the split and the checkpoint loading are IMPORTED
 from finetuning.qm9.finetune rather than reimplemented, both batch with the same
-data.core.collate.GraphCollator, and both scripts read
+atom_jepa.data.collate.GraphCollator, and both scripts read
 the same conf/finetune_qm9.yaml (this one additionally reads an optional
 `probe_head:` block for cache/head settings).
 
@@ -50,8 +50,8 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, Subset
 
 import wandb
-from models.eqv3_backbone import edges_from_batch
-from data.core.collate import GraphCollator
+from atom_jepa.models.eqv3_backbone import edges_from_batch
+from atom_jepa.data.collate import GraphCollator
 from data.datasets.qm9 import QM9Dataset
 from finetuning.qm9.readouts import build_readout
 from finetuning.results_csv import append_row, encoder_tag
