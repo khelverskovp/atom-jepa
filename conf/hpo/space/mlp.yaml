@@ -1,0 +1,35 @@
+# SHARED multi-task MLP search space (optimizer + architecture).
+#
+# Included by every `family: mlp` HPO config -- morgan_mlp, rdkit_mlp,
+# morgan_rdkit_mlp -- via their defaults lists. Same enforcement argument as
+# space/morgan.yaml: all three MLP baselines get the SAME optimizer and
+# architecture budget, so a difference between them is attributable to the
+# features rather than to one having been handed a wider search.
+#
+# These are the ranges the completed 550-trial biogen_adme_morgan_mlp study
+# used, so resuming or extending that study stays consistent with it.
+#
+# NOTE `finetune.batch_size` is searched here but is a plain training knob
+# (the MLP baselines have no 3D/conformer memory pressure); the LightGBM
+# studies have no analogue.
+#
+# `finetune.weight_decay` was RENAMED to `finetune.encoder_weight_decay` when
+# finetuning.admet.training.train.train_multitask's weight decay was split into three
+# independently configurable axes (see finetuning/admet/training/regularization.py) -- this is
+# still the SAME axis the completed study searched: core.encoder here is
+# finetuning.admet.models.baseline_model's FeatureVectorEncoder (the whole MLP backbone,
+# trained from scratch), which is exactly what this key controls.
+#
+
+# --- optimizer / training ---
+finetune.lr:                  {type: float, low: 1.0e-4, high: 1.0e-2, log: true}
+finetune.epochs:              {type: int, low: 5, high: 500, log: true}
+finetune.encoder_weight_decay: {type: float, low: 1.0e-4, high: 1.0e-1, log: true}
+finetune.head_hidden:         {type: int, low: 32, high: 256, log: true}
+finetune.head_dropout:        {type: float, low: 0.0, high: 0.5}
+
+# --- architecture (finetuning/admet/models/baseline_model.py's FeatureVectorEncoder) ---
+baseline.mlp.hidden_dim:  {type: categorical, choices: [128, 256, 512, 1024]}
+baseline.mlp.num_layers:  {type: int, low: 2, high: 5}
+baseline.mlp.dropout:     {type: float, low: 0.0, high: 0.5}
+baseline.mlp.activation:  {type: categorical, choices: [relu, gelu, silu]}

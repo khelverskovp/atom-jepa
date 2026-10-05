@@ -1,0 +1,64 @@
+# SHARED LightGBM search space (boosting hyperparameters).
+#
+# Included by every `family: lgbm` HPO config -- morgan_lgbm, rdkit_lgbm,
+# morgan_rdkit_lgbm -- via their defaults lists. Same enforcement argument as
+# space/morgan.yaml: all three tree baselines get the SAME boosting budget, so
+# differences between them are attributable to the features.
+#
+# NOT SEARCHED, deliberately:
+#   * `n_estimators` -- early_stopping_rounds against the val split already
+#     selects the effective round count per task, which is the correct way to
+#     tune boosting; searching it too would fight the early stopping. Left
+#     high (2000) and fixed in conf/model/*.yaml.
+#   * `objective` -- fixed at l1 (== MAE), matching the metric these baselines
+#     are scored on.
+#
+# reg_alpha/reg_lambda are log-uniform with low=1e-8 rather than allowing 0:
+# 0 is not a legal draw from a log distribution. The model configs' defaults
+# are 1e-8 to match (numerically indistinguishable from no regularization),
+# so the warm-start trial stays inside its own declared domain -- see
+# finetuning/admet/hpo.py::_in_domain.
+#
+# RANGES ARE CALIBRATED AGAINST THE ADMET LITERATURE, not copied from a
+# generic tabular preset. Two references:
+#
+#   * Fang et al. 2023 (J. Chem. Inf. Model. 63:3263), the paper that produced
+#     the Biogen ADME set itself -- ML/ADME_ML_public.py in
+#     github.com/molecularinformatics/Computational-ADME tunes LightGBM by
+#     sequential GridSearchCV over
+#       n_estimators [100..1000], num_leaves [15,31,45,60,75],
+#       min_child_samples [10,20,30,40], subsample/colsample_bytree [0.6..1.0],
+#       subsample_freq [0,1,3,5], reg_alpha/reg_lambda [0,0.2,0.5,0.8]
+#     and leaves learning_rate at its default.
+#   * Optuna's own LightGBMTuner: feature_fraction/bagging_fraction 0.4-1.0,
+#     min_child_samples 5-100, lambda_l1/lambda_l2 1e-8..10 log, num_leaves
+#     up to 2**depth (256 by default).
+#
+# Where we deliberately differ from Fang et al.:
+#   * learning_rate IS searched here and n_estimators is NOT. Those are two
+#     valid designs for the same tradeoff; ours is the early-stopping one
+#     (n_estimators fixed high, early_stopping_rounds picks the real count per
+#     task), so the free knob becomes the step size instead of the round count.
+#   * reg_alpha/reg_lambda span a wide log range (Optuna's convention) rather
+#     than Fang's narrow linear grid -- TPE locates the useful region itself.
+#
+# num_leaves upper bound: 128, NOT Optuna's generic 256. LightGBM here fits
+# ONE booster per task, so the sample size that matters is per-task labeled
+# TRAIN rows, and those are small (measured on Biogen ADME seed 1):
+#     HLM 2469 | RLM 2446 | MDR1-MDCK 2112 | solubility 1747
+#     plasma protein binding (human) 147 | (rat) 130
+# At 255 leaves the dense tasks get ~8-10 rows/leaf (overfitting territory for
+# noisy assay data) and the two PPB tasks cannot reach 255 leaves at all
+# (min_child_samples>=5 caps them near 26) -- so the top half of a 0-255 range
+# is either harmful or dead, and either way wastes search dimension. 128
+# comfortably contains Fang et al.'s empirically-supported {15..75} with
+# headroom on this exact dataset.
+#
+
+baseline.lgbm.learning_rate:     {type: float, low: 5.0e-3, high: 3.0e-1, log: true}
+baseline.lgbm.num_leaves:        {type: int, low: 8, high: 128, log: true}
+baseline.lgbm.min_child_samples: {type: int, low: 5, high: 100, log: true}
+baseline.lgbm.subsample:         {type: float, low: 0.5, high: 1.0}
+baseline.lgbm.colsample_bytree:  {type: float, low: 0.4, high: 1.0}
+baseline.lgbm.reg_alpha:         {type: float, low: 1.0e-8, high: 10.0, log: true}
+baseline.lgbm.reg_lambda:        {type: float, low: 1.0e-8, high: 10.0, log: true}

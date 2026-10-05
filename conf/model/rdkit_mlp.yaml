@@ -1,0 +1,37 @@
+# @package _global_
+# BASELINE 3/6: RDKit 2D descriptors -> multi-task MLP.
+#
+# A physicochemical/topological view of the molecule (MolWt, LogP, TPSA,
+# EState, ring/rotatable-bond counts, ...) instead of a substructure
+# fingerprint -- a genuinely different inductive bias from Morgan, and the
+# one most directly aligned with ADME endpoints, several of which
+# (solubility, permeability, plasma-protein binding) are classically modelled
+# from exactly these quantities.
+#
+# feature_scaling: none (below) -- the descriptastorus rdkit_2d_normalized
+# featurizer already CDF-normalizes every column into [0,1] before this ever
+# sees it (200 columns, not the raw 217 -- see data/datasets/admet/mol_features.py), so
+# there is nothing left to scale, and no fit-on-train step to leak.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=rdkit_mlp
+
+defaults:
+  - /hpo: rdkit_mlp
+  - _self_
+
+baseline:
+  kind: rdkit_mlp
+  family: mlp
+  featurizers: [rdkit_2d_normalized]
+  # descriptastorus CDF-normalized descriptors (200, all in [0,1]) -- byte-for-byte
+  # the Contrastive KERMT paper's own "RDKit Descriptor + MLP" featurization.
+  # feature_scaling: none because the CDF IS the normalization (and it is
+  # split-independent, so unlike a fitted StandardScaler there is nothing to
+  # leak). See data/datasets/admet/mol_features.py::rdkit_2d_normalized.
+  feature_scaling: none
+  in_dim: null                  # 200 (descriptastorus), derived rather than hard-coded
+  mlp:
+    hidden_dim: 512
+    num_layers: 3
+    dropout: 0.1
+    activation: relu

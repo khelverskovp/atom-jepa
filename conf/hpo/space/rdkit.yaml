@@ -1,0 +1,25 @@
+# SHARED RDKit-descriptor search space -- DELIBERATELY EMPTY.
+#
+# Included by every descriptor-using HPO config -- rdkit_mlp, rdkit_lgbm,
+# morgan_rdkit_mlp, morgan_rdkit_lgbm -- via their defaults lists, exactly
+# like space/morgan.yaml, so the two featurizers are configured through the
+# same mechanism and the symmetry is visible rather than implied.
+#
+# WHY EMPTY: the descriptor block has no tunable knob to search.
+#   * The column set is fixed: ALL 217 of RDKit's 2D descriptors, by design
+#     (no curated subset, so there is no selection choice for HPO to overfit).
+#   * `baseline.rdkit_desc.ipc_log1p` is the block's only parameter, and it is
+#     a CORRECTNESS fix rather than an accuracy tradeoff: raw Ipc spans
+#     4.4e2..1.1e11 on the real Biogen pool and overflows to inf on larger
+#     molecules, which would dominate any StandardScaler fit. Searching it
+#     would just be offering the optimizer a broken option.
+#
+# Keeping the file (rather than omitting the include) means: the four
+# descriptor studies declare their featurizer the same way the Morgan ones do,
+# and if a genuinely tunable descriptor knob is ever added -- a subset switch,
+# an alternative transform -- it goes HERE once and all four studies pick it
+# up together, with no risk of adding it to three configs and forgetting the
+# fourth.
+#
+
+{}

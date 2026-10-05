@@ -1,0 +1,95 @@
+# @package hpo
+#
+# Optuna HPO settings for the JEPA-pretrained EquiformerV3 encoder finetuned
+# on Biogen ADME (finetuning/admet/experiments/hpo_finetune.py), selected via
+# conf/finetune_biogen_adme.yaml's `defaults: [_self_, hpo: jepa_biogen_adme]`
+# -- inert for the ordinary finetuning/admet/finetune_biogen_adme.py driver, which never
+# reads cfg.hpo. Sibling to conf/hpo/morgan_mlp.yaml (the Morgan+MLP baseline's
+# HPO config) -- same leakage discipline, same sampler/pruner machinery
+# (finetuning/admet/experiments/hpo_finetune.py imports the builders from finetuning/admet/hpo.py rather than
+# duplicating them), different search space: no architecture to search here
+# (the encoder's architecture is fixed by the pretrained checkpoint), and two
+# transfer-learning-specific knobs (freeze_encoder_epochs, lr_warmup_epochs)
+# that have no baseline analogue.
+#
+# LEAKAGE DISCIPLINE: see finetuning/admet/hpo.py's module docstring for the full
+# rationale -- identical here. `seed` is a DEDICATED scaffold-split seed for
+# HPO train/val only, disjoint from finetune.seeds ([1,2,3,4,5], the ones
+# finetuning/admet/compare_models.py treats as independent run-level samples). The
+# held-out test split of `seed`'s partition is never read during HPO.
+# Selection is always on validation macro-MAE. Trials use the SAME
+# finetune.epochs as the final run (no schedule-shape confound) -- compute
+# savings come from the pruner, not a shorter/differently-shaped schedule.
+#
+# COST NOTE: each trial here is a real GNN forward/backward pass over
+# embedded conformers, not a Morgan-fingerprint MLP -- meaningfully more
+# expensive per epoch than the baseline HPO. n_trials/search-space width are
+# kept smaller than conf/hpo/morgan_mlp.yaml's for that reason; widen once the
+# first study's actual per-trial wall-clock is known.
+#
+# Run: python -m finetuning.admet.experiments.hpo_finetune finetune.ckpt_path=/path/to/context_encoder.pt hpo.n_trials=40
+
+seed: 0                     # dedicated Biogen ADME scaffold-split seed for HPO -- see above
+sampler_seed: 0              # separate RNG seed for the Optuna sampler's own search strategy
+n_trials: 40
+metric: val.macro              # dotted path into train_multitask's return dict; lower is better
+direction: minimize
+
+sampler: tpe                     # tpe | gp | random
+n_startup_trials: 8                # random/quasi-random trials before tpe/gp switch to
+                                    #   model-based suggestions (fewer than the baseline's 10,
+                                    #   since a full n_trials=40 budget can't afford as long a
+                                    #   pure-random phase)
+warm_start: true                    # enqueue the CURRENT hand-picked config
+                                     #   (conf/finetune_biogen_adme.yaml) as a guaranteed early
+                                     #   trial via study.enqueue_trial
+pruner: hyperband                     # hyperband | median | none
+pruner_min_resource: 10                # epochs before a trial becomes eligible for pruning
+pruner_reduction_factor: 3
+
+final_full: false                        # after the study finishes, retrain+evaluate the
+                                          # winning config with the real finetune.seeds via
+                                          # finetuning.admet.finetune_biogen_adme (opt-in)
+
+# dotted OmegaConf path -> Optuna distribution spec, applied via
+# OmegaConf.update(cfg, path, trial.suggest_*(...)). Deliberately excludes:
+#   - finetune.cutoff, finetune.grad_checkpointing: operational/compute knobs,
+#     not accuracy hyperparameters -- left at their conf/finetune_biogen_adme.yaml
+#     defaults (null / false).
+#   - finetune.num_conformers, finetune.ema_decay, finetune.grad_clip,
+#     finetune.mtl_loss (on/off): plausible future additions, but held fixed
+#     for this first study to keep per-trial cost and search-space
+#     dimensionality down given how much more expensive each trial already is
+#     than the baseline's. Revisit once this study's results are in.
+#   - finetune.batch_size, finetune.lr_warmup_epochs: fixed by request (see
+#     fixed_params below) rather than searched.
+# `finetune.weight_decay` was RENAMED to `finetune.trunk_weight_decay` when
+# finetuning.admet.training.train.train_multitask's weight decay was split into three
+# independently configurable axes (see finetuning/admet/training/regularization.py). This is the
+# closest continuation of what this study was already searching: before the
+# split, `finetune.weight_decay` applied uniformly to encoder+head+mtl, and
+# trunk_weight_decay is the piece of that (core.head: shared trunk + every
+# per-task head) still meaningfully regularized by plain decay-toward-zero.
+# `finetune.encoder_weight_decay` (now defaults 0.0 -- L2-SP is the intended
+# regularizer for the pretrained encoder instead) and `finetune.l2sp.lambda`
+# are NOT added to this search space -- deliberately left out for the same
+# reason as the other excluded knobs listed above, not because they're
+# uninteresting; consider adding l2sp.lambda in a follow-up study.
+search_space:
+  finetune.lr:                    {type: float, low: 1.0e-6, high: 3.0e-4, log: true}
+  finetune.head_lr_mult:          {type: float, low: 1.0, high: 50.0, log: true}
+  finetune.mtl_lr:                {type: float, low: 1.0e-5, high: 5.0e-4, log: true}
+  finetune.trunk_weight_decay:    {type: float, low: 1.0e-6, high: 1.0e-1, log: true}
+  finetune.head_dropout:          {type: float, low: 0.0, high: 0.5}
+  finetune.head_hidden:           {type: categorical, choices: [32, 64, 128, 256]}
+  finetune.freeze_encoder_epochs: {type: int, low: 0, high: 100}   # uniform; 100 == frozen the whole run
+
+# dotted OmegaConf path -> literal value, applied via the same OmegaConf.update
+# mechanism as search_space but with no Optuna distribution -- every trial
+# gets exactly this value. Overrides conf/finetune_biogen_adme.yaml's own
+# default for that path (batch_size already defaults to 8 there;
+# lr_warmup_epochs defaults to 0 there but is fixed at 10 for HPO trials only
+# -- the standalone finetune_biogen_adme.py driver's own default is untouched).
+fixed_params:
+  finetune.batch_size: 4
+  finetune.lr_warmup_epochs: 1

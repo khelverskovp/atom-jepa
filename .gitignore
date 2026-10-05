@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+settings.json
+.vscode/
+.idea/
+
+# Personal cluster job scripts
+jobs/
+
+# Run outputs: logs, checkpoints, Hydra / wandb run dirs, result tables
+batch_output/
+job_logs/
+checkpoint/
+checkpoints/
+outputs/
+multirun/
+wandb/
+results/
+*.pt
+admet_fragmentation.tex
+
+# Datasets and caches: everything under data/ except the code and its README
+data/*
+!data/README.md
+!data/core/
+!data/datasets/
+
+# Personal analysis scripts: everything in scripts/ except the package files and data tools
+scripts/*
+!scripts/__init__.py
+!scripts/data/

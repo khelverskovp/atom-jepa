@@ -1,0 +1,57 @@
+# @package _global_
+# BASELINE 2/6: Morgan fingerprint -> LightGBM (one regressor per task).
+#
+# Gradient-boosted trees over sparse binary/count fingerprint bits is the
+# classic strong ADMET baseline, and often beats a same-features MLP on
+# tabular/fingerprint inputs at this data scale (thousands of molecules) --
+# which is exactly why it belongs in the battery: an MLP-only baseline is a
+# weak control for "is the pretrained 3D encoder actually adding anything".
+#
+# Unlike the MLP variants there is no shared trunk: each task gets its own
+# independent booster fit on only that task's labeled rows, so tasks cannot
+# transfer to each other but extreme label sparsity costs nothing. See
+# finetuning/admet/training/gbm.py.
+#
+# use_counts: true follows the literature's strong-fingerprint-baseline recipe
+# (Notwell & Wood, arXiv:2310.00174, MapLight) -- count-based fingerprints
+# into a GBDT is their winning configuration.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=morgan_lgbm
+
+defaults:
+  - /hpo: morgan_lgbm
+  - _self_
+
+baseline:
+  kind: morgan_lgbm
+  family: lgbm                  # -> finetuning.admet.training.gbm.train_multitask_gbm (no torch, no GPU)
+  featurizers: [morgan]
+  feature_scaling: none         # trees are scale-invariant; kept none, counts need no scaler for LightGBM
+  in_dim: null
+  morgan:
+    radius: 2
+    n_bits: 1024
+    use_counts: true             # substructure occurrence counts -- HPO still searches this
+  lgbm:
+    # n_estimators is left HIGH and fixed on purpose: early_stopping_rounds on
+    # the val split picks the real number of rounds per task, which is the
+    # correct way to tune boosting (searching n_estimators directly would
+    # fight the early stopping).
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    learning_rate: 0.05
+    num_leaves: 31
+    min_child_samples: 20
+    subsample: 0.8
+    subsample_freq: 1            # >0 required for `subsample` to actually take effect in LightGBM
+    colsample_bytree: 0.8
+    # 1e-8 not 0.0 (LightGBM's own default): the HPO search space declares
+    # these log-uniform with low=1e-8, and 0 is not a legal draw from a
+    # log distribution -- so a literal 0.0 here would be dropped from the
+    # warm-start trial. 1e-8 is numerically indistinguishable from no
+    # regularization and keeps the default inside its own search domain.
+    reg_alpha: 1.0e-8
+    reg_lambda: 1.0e-8
+    objective: l1                # L1 == MAE, matching the metric these baselines are scored on
+    n_jobs: -1
+    verbose: -1

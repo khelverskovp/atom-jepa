@@ -1,0 +1,54 @@
+# @package _global_
+# BASELINE 6/6: Morgan fingerprint + RDKit descriptors (concatenated) -> LightGBM.
+#
+# The strongest classical configuration in the battery: the full "kitchen
+# sink" feature set (substructure bits + physicochemical descriptors) fed to
+# the model family best suited to it. If the JEPA-pretrained 3D encoder beats
+# this one on an endpoint, that is the result worth reporting -- the other
+# five baselines mainly establish which half of the win (features vs. model
+# family) each margin comes from.
+#
+# LightGBM's per-feature split selection handles the mixed sparse-count /
+# dense-continuous concatenation natively, without the block-wise scaling
+# care an MLP would need.
+#
+# use_counts: true -- MapLight's own winning recipe (arXiv:2310.00174) is
+# count fingerprints into a GBDT.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=morgan_rdkit_lgbm
+
+defaults:
+  - /hpo: morgan_rdkit_lgbm
+  - _self_
+
+baseline:
+  kind: morgan_rdkit_lgbm
+  family: lgbm
+  featurizers: [morgan, rdkit_2d_normalized]
+  # feature_scaling: none -- trees are scale-invariant, so the count-Morgan
+  # block needs no scaler here even though the MLP sibling now uses one.
+  feature_scaling: none
+  in_dim: null                        # = morgan.n_bits + 200, derived
+  morgan:
+    radius: 2
+    n_bits: 1024
+    use_counts: true
+  lgbm:
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    learning_rate: 0.05
+    num_leaves: 31
+    min_child_samples: 20
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    # 1e-8 not 0.0 (LightGBM's own default): the HPO search space declares
+    # these log-uniform with low=1e-8, and 0 is not a legal draw from a
+    # log distribution -- so a literal 0.0 here would be dropped from the
+    # warm-start trial. 1e-8 is numerically indistinguishable from no
+    # regularization and keeps the default inside its own search domain.
+    reg_alpha: 1.0e-8
+    reg_lambda: 1.0e-8
+    objective: l1
+    n_jobs: -1
+    verbose: -1

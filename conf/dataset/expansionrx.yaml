@@ -1,0 +1,24 @@
+# @package _global_
+# Per-dataset overrides for ExpansionRX, selected via `dataset=expansionrx`.
+# See conf/baseline.yaml for the shared baseline/finetune/wandb/misc knobs
+# this only adds to.
+
+dataset: expansionrx
+
+# misc.checkpoint_dir / wandb.run_name are NOT set here: conf/baseline.yaml
+# interpolates them from ${dataset} + ${baseline.kind}, so each of the 6
+# models gets its own directory automatically.
+
+data:
+  expansionrx_path: data/expansionrx    # data/datasets/admet/download/expansionrx.py download dir
+  val_frac: 0.15                        # carved from the TAIL of train (temporal, no shipped val split)
+  feature_cache_dir: data/expansionrx_features
+
+finetune:
+  # The temporal train/test split is fixed (can't be reshuffled), so seeds
+  # here only vary model init/dataloader shuffling on that one partition --
+  # matches the Contrastive KERMT paper's own 5-seed ExpansionRX protocol.
+  seeds: [1, 2, 3, 4, 5]
+  # all endpoints except LogD are raw-scale (need log1p); LogD is already log-scale.
+  log_transform_tasks: [KSOL, "HLM CLint", "MLM CLint", "Caco-2 Permeability Papp A>B",
+                        "Caco-2 Permeability Efflux", MPPB, MBPB, MGMB]

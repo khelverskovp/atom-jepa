@@ -1,0 +1,101 @@
+# Shared Hydra config for the feature-vector baseline battery on the 3
+# multi-task ADMET benchmarks, run through the single consolidated driver
+# finetuning/admet/baseline.py. TWO independent switches:
+#
+#   dataset=  chembl_mt | expansionrx | biogen_adme        (conf/dataset/*.yaml)
+#   model=    morgan_mlp | morgan_lgbm | rdkit_mlp |       (conf/model/*.yaml)
+#             rdkit_lgbm | morgan_rdkit_mlp | morgan_rdkit_lgbm
+#
+# `model=` is the single switch for everything model-shaped: featurizer list,
+# feature scaling, model family (torch MLP vs LightGBM), architecture knobs,
+# AND the matching conf/hpo/*.yaml search space (each model yaml pulls its own
+# via its defaults list).
+#
+# `morgan_mlp` is the original baseline and stays the default: "Morgan
+# fingerprints (RDKit) at radius 2, 1024 bits, passed to a 3-layer feed-forward
+# network (same multi-task head and loss as finetuning)" -- the fixed-descriptor
+# baseline from the Contrastive KERMT paper's Appendix E, reusing the SAME
+# finetuning.admet.models.model.MultiTaskReadout / masked loss / MTLLoss / training loop as the
+# JEPA-pretrained encoder (see finetuning/admet/models/baseline_model.py and finetuning/admet/training/train.py's
+# train_multitask docstring).
+#
+# Everything here is shared across BOTH axes; per-dataset knobs (data paths,
+# fold/seed grid, log-transform mask) live in conf/dataset/*.yaml and per-model
+# knobs in conf/model/*.yaml.
+#
+# First time: python -m data.datasets.admet.download.chembl_mt | fetch_expansionrx | fetch_biogen_adme
+#
+# Run: python -m finetuning.admet.baseline dataset=chembl_mt                        (defaults)
+#      python -m finetuning.admet.baseline dataset=biogen_adme model=rdkit_lgbm
+#      python -m finetuning.admet.baseline dataset=biogen_adme model=morgan_rdkit_mlp
+#      python -m finetuning.admet.baseline dataset=chembl_mt data.which=biogen      (smoke test)
+
+defaults:
+  - _self_
+  - dataset: chembl_mt
+  - model: morgan_mlp   # also pulls in the matching conf/hpo/*.yaml (unread by finetuning/admet/baseline.py)
+
+misc:
+  device: cuda                 # falls back to cpu automatically if cuda is unavailable
+  seed: 0
+  log_every: 500
+  # per-variant checkpoint dir, so each of the 6 models x 3 datasets lands in its
+  # own directory -- exactly what finetuning/admet/compare_models.py expects (one dir per
+  # model variant), with no manual override needed. `run_suffix` further
+  # separates variants of the SAME dataset+model that must not share a
+  # directory (conf/dataset/chembl_mt.yaml sets it to the `which` subset, so a
+  # which=public run cannot overwrite a which=biogen one).
+  checkpoint_dir: checkpoint/${dataset}${run_suffix}_baseline_${baseline.kind}
+
+# extra path/run-name discriminator; "" for datasets that need none.
+run_suffix: ""
+
+data:
+  feature_workers: 1           # RDKit featurization is CPU-only; parallelize for the descriptor block
+
+wandb:
+  run_name: ${dataset}${run_suffix}_baseline_${baseline.kind}
+  enabled: true
+  project: molecule-jepa
+  entity: null                 # null -> your default wandb entity
+  mode: online
+
+finetune:
+  pool: mean
+  standardize: true            # per-task mean/std over TRAIN, ignoring missing labels (nanmean/nanstd)
+  loss: huber                  # elementwise per-task loss before masking: huber | mse | mae
+  mtl_loss: true                # Kendall et al. (2018) learned per-task uncertainty weighting
+  head_dropout: 0.1
+  head_hidden: 64               # hidden width of each per-task MLP head (finetuning.admet.models.model.MultiTaskReadout)
+  lr: 1.0e-3                    # encoder LR -- an MLP-from-scratch baseline tolerates a much higher
+                                #   LR than fine-tuning a pretrained equivariant encoder
+  head_lr_mult: 1.0              # no LR-ratio trick needed once the whole model starts from scratch
+  mtl_lr: 1.0e-3                 # LR for MTLLoss's log_sigma param group
+  plot_every: 20                # epochs between per-task pred-vs-actual scatter plots (wandb). 0 disables.
+  n_plot_tasks: 3                # scatter-plot the N densest + N sparsest tasks (by val label count)
+  batch_size: 64                # no 3D graph/conformer memory pressure -- much larger than the
+                                #   equivariant-encoder driver's batch_size: 8
+  grad_clip: 10.0
+  freeze_encoder_epochs: 0
+  lr_warmup_epochs: 0
+
+  epochs: 100
+  # Weight decay is split into three axes (see finetuning/admet/training/regularization.py),
+  # all 0.01 here. `encoder_weight_decay` is
+  # the LOAD-BEARING one for the baseline MLP family: core.encoder here is
+  # finetuning.admet.models.baseline_model's FeatureVectorEncoder, trained from scratch (no
+  # pretrained solution), so unlike the real JEPA fine-tune configs -- where
+  # this key defaults to 0.0 because L2-SP is the intended regularizer for a
+  # pretrained encoder -- for baselines this key IS the encoder's real
+  # regularizer and must not be left at that JEPA-path default.
+  encoder_weight_decay: 0.01
+  trunk_weight_decay: 0.01
+  mtl_weight_decay: 0.01
+  ema: true
+  ema_decay: 0.99
+  scheduler: cosine
+  min_lr: 1.0e-6
+  patience: 20                  # epochs of no macro-MAE improvement before early stopping
+
+  save_best: true
+  save_last: true

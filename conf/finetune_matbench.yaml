@@ -1,0 +1,111 @@
+# MatBench fine-tuning
+#
+# One setting per knob, applied to all eight tasks. The single per-task branch
+# in the whole pipeline is `max_pool_tasks` below.
+
+defaults:
+  - _self_
+
+matbench:
+  # --- which experiments ---
+  tasks:
+    - matbench_phonons
+    - matbench_dielectric
+    - matbench_log_gvrh
+    - matbench_log_kvrh
+    - matbench_perovskites
+    - matbench_mp_gap
+    - matbench_mp_e_form
+    - matbench_mp_is_metal
+  folds: [0, 1, 2, 3, 4]
+  official_folds: true   # false falls back to a deterministic KFold 
+
+  # --- checkpoint ---
+  ckpt_path: ""              # empty -> <misc.checkpoint_dir>/context_encoder.pt
+  train_from_scratch: false  # same architecture, random init
+
+  # --- readout ---
+  readout: pooled
+  head_hidden: 256    
+  use_higher_order_invariants: true
+  num_layers: 5     
+  activation: silu
+  dropout: 0.1     
+  reduce: mean       # how atoms combine: mean | sum | max
+  max_pool_tasks: [matbench_phonons]
+
+  # Only read for the one classification task (matbench_mp_is_metal); ignored
+  # by the seven regression tasks.
+  class_weights: [1.0, 1.342]
+
+  # --- optimization ---
+  epochs: 50
+  batch_size: 4       
+  eval_batch_size: 32  
+  accum_steps: 1       
+  lr: 5.0e-5           
+  head_lr_mult: 10.0   
+  loss: huber         
+  betas: [0.9, 0.95]
+  adam_eps: 1.0e-8
+  grad_clip: 10.0      
+  amp: true
+  amp_dtype: bfloat16  
+  grad_checkpointing: false
+  optimize_grid_mlp: true
+  cuequivariance: true  
+  compile_blocks: true
+  compile_mode: default
+  compile_dynamic: true
+
+  # --- weight decay ---
+  encoder_weight_decay: 0.0
+  head_weight_decay: 0.1
+  no_decay_bias_norm: false  
+
+  # --- pretrained-trunk handling  ---
+  freeze_encoder_epochs: 10   
+  encoder_warmup_epochs: 10 
+  encoder_eval_mode: true
+                             
+  ema: true                  
+  ema_decay: 0.99
+  l2sp:
+    enabled: true           
+    lambda: 1.0e-5
+    log_every: 500          
+
+  # --- learning rate schedule ---
+  lr_warmup_epochs: 10       
+  warmup_start_factor: 0.1 
+  min_lr: 1.0e-7           
+
+  # --- early stopping ---
+  patience: null            
+  min_delta: 1.0e-8
+
+  # --- data ---
+  val_frac: 0.1        
+  split_seed: 42       
+  standardize: true    
+
+  # --- bookkeeping ---
+  seed: 0                   
+  save_last: false    
+  results_dir: ""      
+  classification_metric: f1   
+data:
+  num_workers: 4
+
+misc:
+  device: cuda               
+  checkpoint_dir: checkpoints 
+  log_every_epochs: 1
+  log_every_steps: 50    
+
+wandb:
+  enabled: true
+  mode: online           
+  project: null              
+  entity: null               
+  run_name: null            

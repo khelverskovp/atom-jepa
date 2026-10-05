@@ -1,0 +1,85 @@
+# @package _global_
+# BASELINE 7/8: Morgan + Avalon + ErG fingerprints + RDKit descriptors -> LightGBM.
+#
+# The literature's own recipe for a STRONG fixed-descriptor ADMET baseline
+# (Notwell & Wood, arXiv:2310.00174, MapLight Therapeutics): count ECFP +
+# count Avalon + ErG (2D pharmacophore) + ~200 RDKit properties, concatenated,
+# into a GBDT. Reached top-1 on 6/22 and top-3 on 16/22 TDC ADMET leaderboards
+# with a single model, explicitly beating RF/SVM/GNN/transformer baselines
+# they also tried -- "even models that leveraged pretraining on large
+# molecular datasets did not outperform random forests or support vector
+# machines coupled with ECFP". Their published code (maplightrx/MapLight-TDC,
+# maplight.py) confirms the exact recipe: GetHashedMorganFingerprint counts,
+# GetAvalonCountFP counts, GetErGFingerprint at defaults, ~200 RDKit
+# descriptors, concatenated in that order -- reproduced below via
+# data/datasets/admet/mol_features.py's morgan/avalon/erg/rdkit_2d_normalized featurizers.
+#
+# This is the "kitchen sink" of the battery, superseding morgan_rdkit_lgbm
+# (5/6 -> now folded into an 8-model battery) as the strongest classical
+# opponent: if the JEPA-pretrained encoder beats THIS on an endpoint, that is
+# the result worth reporting.
+#
+# in_dim = morgan.n_bits + avalon.n_bits + 21*erg.max_path + 200
+#        = 1024 + 1024 + 315 + 200 = 2563 at the defaults below (derived, not
+#          hardcoded -- see finetuning.admet.baseline._feature_dim).
+#
+# feature_scaling: quantile even though LightGBM doesn't strictly need it --
+# verified rank-monotone (Spearman rho = 1.0 vs raw), but NOT bit-identical
+# for LightGBM in practice: its default split-finding is histogram-based
+# (bins raw values, not pure ranks), so it can shift a near-tied value across
+# a bin boundary -- measured ~0.3% relative macro-MAE difference on a real
+# 60-molecule subset, not exactly zero. Kept ON anyway so this config and its
+# _mlp sibling see the SAME scaling (no confound between "which family is
+# better" and "which family got which scaling"); the residual effect is
+# small relative to genuine model differences. See
+# finetuning.admet.baseline.fit_apply_feature_scaler's docstring.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=morgan_avalon_erg_rdkit_lgbm
+
+defaults:
+  - /hpo: morgan_avalon_erg_rdkit_lgbm
+  - _self_
+
+baseline:
+  kind: morgan_avalon_erg_rdkit_lgbm
+  family: lgbm
+  featurizers: [morgan, avalon, erg, rdkit_2d_normalized]   # MapLight's own order
+  feature_scaling: quantile
+  in_dim: null
+  morgan:
+    radius: 2
+    n_bits: 1024
+    use_counts: true
+  avalon:
+    n_bits: 1024                 # NOT searched by HPO -- Avalon bit length has little
+                                  #   effect (r^2=0.993 between 1024- and 16384-bit versions)
+    use_counts: true
+  erg:
+    fuzz_increment: 0.3          # HPO searches this -- 0.3 was tuned for scaffold hopping,
+                                  #   property prediction may prefer a crisper (lower) value
+    min_path: 1
+    max_path: 15                 # NOT searched -- output width is 21*max_path, so sweeping
+                                  #   it would change in_dim per trial
+  lgbm:
+    # n_estimators is left HIGH and fixed on purpose: early_stopping_rounds on
+    # the val split picks the real number of rounds per task, which is the
+    # correct way to tune boosting (searching n_estimators directly would
+    # fight the early stopping).
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    learning_rate: 0.05
+    num_leaves: 31
+    min_child_samples: 20
+    subsample: 0.8
+    subsample_freq: 1            # >0 required for `subsample` to actually take effect in LightGBM
+    colsample_bytree: 0.8
+    # 1e-8 not 0.0 (LightGBM's own default): the HPO search space declares
+    # these log-uniform with low=1e-8, and 0 is not a legal draw from a
+    # log distribution -- so a literal 0.0 here would be dropped from the
+    # warm-start trial. 1e-8 is numerically indistinguishable from no
+    # regularization and keeps the default inside its own search domain.
+    reg_alpha: 1.0e-8
+    reg_lambda: 1.0e-8
+    objective: l1                # L1 == MAE, matching the metric these baselines are scored on
+    n_jobs: -1
+    verbose: -1

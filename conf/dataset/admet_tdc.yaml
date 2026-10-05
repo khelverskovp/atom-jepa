@@ -1,0 +1,54 @@
+# @package _global_
+# Per-dataset overrides for TDC-ADMET, selected via `dataset=admet_tdc`.
+# See conf/baseline.yaml for the shared baseline/finetune/wandb/misc knobs
+# this only adds to.
+#
+# NOT a multi-task dataset like the other three -- TDC's ADMET Benchmark
+# Group scores 22 INDEPENDENT single-task endpoints, each its own leaderboard
+# entry, so finetuning.admet.baseline._run_admet_tdc trains one model per (benchmark,
+# seed) rather than one multi-task model over all 22. `data.benchmark`
+# selects which: null runs all 22 in one process (interactive/smoke-test
+# only); set it to a single name to run one benchmark per job.
+#
+# PROTOCOL: TDC's own (tdcommons.ai/benchmark/overview, verified against the
+# installed tdc.benchmark_group.base_group source) -- FIXED scaffold test set
+# per benchmark; 5 seeded train/valid partitions of the remaining pool;
+# group.evaluate_many aggregates the 5 seeds' test predictions into the
+# official mean+-std. `data/datasets/admet/admet_finetune.py::get_train_valid`'s
+# split_type="scaffold" default IS TDC's `split_type='default'` for every one
+# of the 22 ADMET benchmarks (verified: bm_split_names['admet_group'] is
+# scaffold for all 22) -- nothing to override here.
+#
+# HYPERPARAMETERS ARE NOT TUNED NATIVELY: finetuning/admet/hpo.py's
+# `_HPO_OBJECTIVES` only dispatches `biogen_adme`, so this dataset's models
+# use either the Biogen-cluster-tuned or the default hyperparameters, never
+# TDC-native ones. That
+# also means TDC-native HPO leakage -- the exact failure mode a 2026
+# reproducibility audit of these leaderboards documented in GradientBoost/
+# XGBoost entries (HPO validation overlapping the public test set) -- is
+# structurally impossible here: no HPO ever touches this dataset at all.
+
+dataset: admet_tdc
+
+# misc.checkpoint_dir / wandb.run_name are NOT set here: conf/baseline.yaml
+# interpolates them from ${dataset} + ${baseline.kind}, so each of the 8
+# models gets its own directory automatically; every one of the 22
+# benchmarks writes its own admet_tdc_<name>_summary.json into that same dir.
+
+data:
+  tdc_path: data/admet_group          # finetuning/admet/finetune_admet.py's existing download/cache dir (shared)
+  benchmark: null                     # null = all 22 | a single name | a list of names
+  feature_cache_dir: data/admet_tdc_features
+
+finetune:
+  seeds: [1, 2, 3, 4, 5]              # TDC's own protocol: "at minimum five independent runs"
+  # Kendall (2018) uncertainty weighting is for balancing MULTIPLE task
+  # losses against each other -- with exactly one task it only learns a
+  # single global loss scale that fights the LR for no benefit, so it is off
+  # here (every other dataset in this battery is genuinely multi-task and
+  # leaves this at its true default, true).
+  mtl_loss: false
+  # finetune.select is NOT set here: the metric varies PER BENCHMARK (5 MAE,
+  # 4 Spearman, 8 ROC-AUC, 5 PR-AUC -- tdc.metadata.admet_metrics) and is only
+  # known once finetuning.admet.baseline._run_admet_tdc_one resolves the task for the
+  # benchmark this process is running, so it is set there at runtime instead.

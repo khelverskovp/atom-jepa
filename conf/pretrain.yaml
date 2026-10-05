@@ -1,0 +1,128 @@
+# Atom-JEPA pretraining
+defaults:
+  - _self_
+  - data: unimol          # conf/data/<name>.yaml: qm9 | unimol | alexandria
+
+hydra:
+  job:
+    chdir: false        
+
+# --------------------------------------------------------------------------- #
+# model: EquiformerV3 backbone (shared by encoder, EMA target, and predictor)
+# --------------------------------------------------------------------------- #
+model:
+  # core size
+  F: 256                # num_channels C (sphere/feature width)
+  pred_F: 128           # predictor width (shallower than encoder)
+  num_layers: 8         # encoder transformer blocks
+  pred_num_layers: 3    # predictor transformer blocks (shallower body q_theta)
+  Lmax: 2               # max degree l of the irreps node state
+  mmax: 2               # max order m for SO(2) attention (<= Lmax; =Lmax => no truncation)
+  cutoff: 6.0           # radius-graph cutoff (Å) for message passing; fine-tuning reuses it
+  num_rbfs: 128         # Gaussian radial basis functions over [0, cutoff]
+  dropout: 0.0
+  num_heads: 8
+
+  # equivariant attention / FFN widths
+  attn_hidden_channels: 64
+  attn_alpha_channels: 64
+  attn_value_channels: 16
+  ffn_hidden_channels: 512
+  edge_channels: 128              # radial-function (invariant edge embedding) width
+  norm_type: merge_layer_norm     # sep_layer_norm | merge_layer_norm | merge_rms_norm | merge_layer_norm_attn_rms_norm
+  drop_path_rate: 0.05
+  predict_irreps: false          # true: predict the target encoder's full irreps (all l), not just l=0
+
+  # S2-grid resolution [lat, long] for the SwiGLU-S² activation.
+  # null -> the exact minimal grid for (Lmax, mmax); for Lmax=mmax=2 that is [6, 7].
+  attn_grid_resolution_list: [14,8]
+  ffn_grid_resolution_list: [14,14]
+
+  # atom embedding is indexed by ATOMIC NUMBER (not a one-hot Linear), so this is
+  # the atomic-number table size (Z < 128), not a dataset vocabulary.
+  max_num_elements: 128
+
+  # parameter-free encoder pool of the l=0 invariant channels -> representation
+  readout_pool: mean    # mean (intensive-friendly) | sum
+  # predictor's learned graph readout head
+  readout_use_mlp: true # pooled -> MLP(C->C->C); if false, use (optional LN) + Linear
+  readout_use_ln: false # only used when readout_use_mlp: false
+
+  grad_checkpointing: false       # activation checkpointing in the encoder
+  pred_grad_checkpointing: null   # null -> follow grad_checkpointing
+
+# --------------------------------------------------------------------------- #
+# views: a k-hop ego subgraph and its complement; the target encoder sees the
+# full sample. Set per dataset in conf/data/<name>.yaml.
+# --------------------------------------------------------------------------- #
+mask:
+  ego_hops: ???                   # k is drawn from this list per sample
+  ego_topology_cutoff: ???        # Å, radius of the hop graph when a sample has no bonds
+
+# --------------------------------------------------------------------------- #
+# optimization (epochs / batch_size / lr are set per dataset in conf/data/<name>.yaml)
+# --------------------------------------------------------------------------- #
+optim:
+  epochs: ${data.epochs}
+  batch_size: ${data.batch_size}
+  lr: ${data.lr}
+  warmup_frac: 0.15         # linear LR warmup over this fraction of all steps, then cosine
+  grad_clip: 100
+  overlap_grad_sync: true   # overlap the gradient all-reduce with backward
+  grad_bucket_mb: 25        # all-reduce bucket size; matters across nodes
+  vicreg_var_weight: 0.0    # 0.0 disables variance regularization
+  vicreg_cov_weight: 0.0    # 0.0 disables covariance regularization
+  vicreg_var_gamma: 1.0     # std threshold for the variance hinge
+  ema_tau_start: 0.995      # target-encoder EMA momentum, linearly scheduled start -> end
+  ema_tau_end: 1.0
+  weight_decay_start: 0.04  # linearly scheduled start -> end
+  weight_decay_end: 0.04
+  symmetric: true           # predict each view from the other (false: one random direction per step)
+  graph_loss_weight: 0.0    # >0 enables the graph-level objective (predict the other view's pooled target)
+  tgt_atom_loss_weight: 1.0 # >0 enables the target-atom objective (predict each atom of the other view)
+
+# --------------------------------------------------------------------------- #
+# probe: frozen-encoder readout run during pretraining (pretraining/probe.py).
+# Molecular runs probe the QM9 `targets` below; crystal runs override this block
+# in conf/data/alexandria.yaml with a Materials Project `target`.
+# --------------------------------------------------------------------------- #
+probe:
+  enabled: true
+  every: 1                        # probe + checkpoint every N epochs
+  every_steps: 5000               # ... and every N steps (null/0 disables)
+  targets: [homo, U0]             # QM9 targets
+  qm9_root: data/qm9
+  limit: null                     # cap the probe dataset size
+  epochs: 100
+  lr: 1.e-3
+  weight_decay: 0.0
+  batch_size: 256
+  val_frac: 0.1
+  test_frac: 0.1
+  pool: mean                      # sum | mean over atoms
+  pool_per_target:                # per-target override of pool, keyed by QM9 target name
+    homo: mean
+    U0: sum
+  hidden_dim: null                # null -> encoder width
+  dropout: 0.0
+  best_metric: probe/homo_val_mae # metric that selects context_encoder_best_<run>.pt
+  best_mode: min
+
+wandb:
+  enabled: true
+  project: null             
+  entity: null              
+  run_name: null          
+  mode: online              
+
+misc:
+  device: cuda              # falls back to cpu automatically if cuda is unavailable
+  seed: 0
+  log_every: 1000
+  metric_every: 4000        # (rankme, alpha_req) every N steps
+  checkpoint_dir: checkpoints     # pretrained encoders + training state are written here
+  resume: false             # if true, restore full training state from resume_path
+  resume_path: null         # null -> ${misc.checkpoint_dir}/train_state_${wandb.run_name}.pt
+  amp: false
+  amp_dtype: bfloat16       # only used if amp: true (and only float16 actually scales)
+  timing: true              # log data-wait / compute / grad-sync time per step

@@ -1,0 +1,47 @@
+# @package hpo
+#
+# Optuna HPO settings for BASELINE 5/6 (Morgan + RDKit descriptors -> MLP),
+# pulled in automatically by conf/model/morgan_rdkit_mlp.yaml's defaults list.
+# Inert for the ordinary finetuning/admet/baseline.py driver, which never reads cfg.hpo.
+#
+# THE SEARCH SPACE IS NOT DEFINED HERE -- this combined model composes the
+# SAME three shared fragments its single-featurizer siblings use:
+#   space/morgan  (identical to morgan_mlp's and morgan_lgbm's)
+#   space/rdkit   (identical to rdkit_mlp's and rdkit_lgbm's; empty by design)
+#   space/mlp     (identical to morgan_mlp's and rdkit_mlp's)
+# That is the whole point of the fragment layout: the combined baseline is
+# searched over exactly the union of what its parts are searched over, with no
+# per-study copy that could drift. Only the optuna RUN settings below are
+# per-study.
+#
+# n_bits changes the CONCATENATED width (n_bits + 217) per trial;
+# finetuning/admet/hpo.py derives in_dim from the actual built features rather than any
+# config value, which is what makes that safe.
+#
+# LEAKAGE DISCIPLINE: identical to every other study here -- dedicated `seed`
+# disjoint from finetune.seeds, held-out test never read during HPO, selection
+# always on validation macro-MAE, and the optimized value never itself
+# reported. See finetuning/admet/hpo.py's module docstring.
+#
+# Run: python -m finetuning.admet.hpo dataset=biogen_adme model=morgan_rdkit_mlp hpo.n_trials=50
+
+defaults:
+  - space/morgan@search_space   # SHARED -- conf/hpo/space/morgan.yaml
+  - space/rdkit@search_space    # SHARED -- conf/hpo/space/rdkit.yaml (empty by design)
+  - space/mlp@search_space      # SHARED -- conf/hpo/space/mlp.yaml
+  - _self_
+
+seed: 0
+sampler_seed: 0
+n_trials: 50
+metric: val.macro
+direction: minimize
+
+sampler: tpe
+n_startup_trials: 10
+warm_start: true
+pruner: hyperband
+pruner_min_resource: 10
+pruner_reduction_factor: 3
+
+final_full: false

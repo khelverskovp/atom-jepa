@@ -1,0 +1,180 @@
+# Standalone Hydra config for ExpansionRX multi-task ADME fine-tuning
+# (finetuning/admet/finetune_expansionrx.py).
+#
+# ExpansionRX: 9-task regression benchmark (OpenADMET challenge), much denser
+# than ChEMBL-MT (mean 4.74/9 labels/molecule vs 1.12/25), though MGMB (4.2%
+# coverage) and MBPB (18.3%) are still sparse enough to expect noisy per-task
+# results -- see data/datasets/admet/expansionrx.py and finetune_expansionrx.py's module
+# docstrings for the full picture (source, temporal split, log-transform mask).
+#
+# First time (from repo root): python -m data.datasets.admet.download.expansionrx
+#
+# Run: python -m finetuning.admet.finetune_expansionrx
+
+misc:
+  device: cuda                 # falls back to cpu automatically if cuda is unavailable
+  seed: 0
+  log_every: 50
+  checkpoint_dir: checkpoint/expansionrx
+
+data:
+  expansionrx_path: data/expansionrx    # data/datasets/admet/download/expansionrx.py download dir
+  val_frac: 0.15                        # carved from the TAIL of train (temporal, no shipped val split)
+  conformer_cache_dir: data/expansionrx_conformers
+  conformer_seed: 42
+  conformer_prune_rms: -1      # RDKit EmbedMultipleConfs pruneRmsThresh (Angstrom); -1 disables pruning.
+                                #   Rigid molecules legitimately return FEWER than num_conformers
+                                #   once pruned -- see data/datasets/admet/admet_conformers.py's module docstring.
+  feature_cache_dir: data/expansionrx_features     # data.datasets.admet.mol_features.build_or_load_features cache dir --
+                                #   SHARED with finetuning.admet.baseline's feature-vector models
+                                #   (same dir, same cache filenames) when they use the
+                                #   same featurizer+kwargs, so building the fusion cache
+                                #   also warms/reuses the baseline cache and vice versa.
+  feature_workers: 1            # RDKit featurization is CPU-only; parallelize for the
+                                #   descriptor block (only used when finetune.fusion.enabled)
+  strip_multi_fragment_smiles: true     # no-op here (0% multi-fragment, verified) but kept on for
+                                        #   consistency/future-proofing -- see admet_conformers.py
+  num_workers: 4
+  num_conformers: 10                    # conformers GENERATED + cached per molecule. Only ~7.6k
+                                        #   unique molecules total (vs ChEMBL-MT's ~114k), so the
+                                        #   project default of 10 is affordable from the start.
+  conformer_workers: -2                 # joblib-style negative n_workers (see admet_conformers.py)
+
+wandb:
+  enabled: true
+  project: molecule-jepa
+  entity: null                 # null -> your default wandb entity
+  run_name: expansionrx
+  mode: online
+
+finetune:
+  precision: bf16              # Encoder only; readout and loss remain FP32. CPU uses FP32.
+  cuequivariance: true         # CUDA: tested fused contractions; false uses native PyTorch.
+  optimize_grid_mlp: true
+  compile_blocks: true         # CUDA only; compilation adds startup cost.
+  compile_mode: default
+  compile_dynamic: true
+  # checkpoint to fine-tune (required, no default)
+  ckpt_path: null
+
+  # The temporal train/test split is fixed (can't be reshuffled), so seeds
+  # here only vary model init/dataloader shuffling on that one partition --
+  # matches the Contrastive KERMT paper's own 5-seed ExpansionRX protocol.
+  # These per-seed runs are the independent run-level samples finetuning.admet.stats'
+  # ANOVA + Tukey HSD model comparison uses (see finetuning/admet/compare_models.py).
+  seeds: [1, 2, 3, 4, 5]
+  train_on_val: false            # true refits on train+val and disables best-epoch selection
+
+  num_conformers: 10             # cap on conformers USED (<= data.num_conformers actually cached)
+  cutoff: null                  # null -> encoder's pretrained max_radius
+  pool: mean
+  standardize: true             # per-task mean/std over TRAIN, ignoring missing labels (nanmean/nanstd)
+  # all endpoints except LogD are raw-scale (need log1p); LogD is already log-scale and must not be
+  # transformed again. Defaults to data.datasets.admet.expansionrx.LOG_TRANSFORM_TASKS if left unset -- override only
+  # to run an ablation (e.g. [] for no log-transform at all).
+  log_transform_tasks: [KSOL, "HLM CLint", "MLM CLint", "Caco-2 Permeability Papp A>B",
+                        "Caco-2 Permeability Efflux", MPPB, MBPB, MGMB]
+  # SECONDARY REPORTING SCALE -- metrics only, never training. Adds
+  # macro_mae_kermt / per_task_mae_kermt (train, val and test) alongside the
+  # native-unit numbers, putting our MAEs on the Contrastive KERMT paper's
+  # axis: log10 on every endpoint except LogD. Without it the native macro
+  # averages 0.43 log units with 225 uL/min/mg and is dominated by whichever
+  # endpoint happens to have the biggest unit. See finetuning/admet/metrics/report_scale.py, and
+  # data/datasets/admet/expansionrx.py's KERMT_REFERENCE_MAE for the numbers to compare to.
+  report_scale: kermt            # null / "" disables the extra metric entirely
+  # log10 is undefined at the exact zeros in HLM/MLM CLint (~3-4% of their
+  # labels), so values are clamped to a floor. null -> per-task smallest
+  # POSITIVE train label, i.e. the assay's own reporting resolution (0.1 for
+  # both CLint endpoints), which is what a recorded 0 actually means. The
+  # paper does not publish its floor; set a number here to test sensitivity.
+  report_scale_floor: null
+  loss: huber                   # elementwise per-task loss before masking: huber | mse | mae
+  mtl_loss: true                 # Kendall et al. (2018) learned per-task uncertainty weighting
+  # See conf/finetune_biogen_adme.yaml for what these do. Values are the ones selected
+  # on the Biogen cluster validation split (ExpansionRX itself was not swept).
+  mtl_mask_absent_tasks: true
+  mtl_classification_precision: legacy
+  # Descriptor/fingerprint fusion -- see conf/finetune_biogen_adme.yaml for
+  # the full rationale on every key. Disabled by default: bit-for-bit
+  # unaffected otherwise.
+  # Feeds the encoder's OWN l>0 tensor-order components into the trunk as
+  # rotation-invariant per-degree norms -- see conf/finetune_biogen_adme.yaml
+  # for the full rationale and finetuning.admet.models.model.per_degree_invariant_norms.
+  use_higher_order_invariants: true
+  fusion:
+    enabled: false
+    featurizers: [rdkit_2d_normalized]   # any data/datasets/admet/mol_features.py FEATURIZERS name;
+                                         #   kwargs read from finetune.fusion.<name>
+                                         #   -- see conf/finetune_biogen_adme.yaml
+    feature_scaling: none      # none | standard | quantile -- see
+                               #   finetuning.admet.training.train._fit_apply_fusion_feature_scaler and
+                               #   conf/finetune_biogen_adme.yaml for the full
+                               #   rationale (use quantile with count fingerprints)
+    mode: late                # early_concat | projected_concat | film | late
+    hidden: 64
+    dropout: 0.0
+    warmup_epochs: 0
+    feature_dropout: 0.0
+    lr_mult: null
+                                #   (finetuning.admet.training.loss.MTLLoss, ported from KERMT). false = simple
+                                #   unweighted mean across the 9 per-task losses.
+  head_dropout: 0.1
+  head_hidden: 64                 # hidden width of each per-task MLP head -- kept at 64, the
+                                  #   value in the Biogen sweep's winning arm (see
+                                  #   conf/finetune_biogen_adme.yaml for why raising it alongside
+                                  #   use_higher_order_invariants would re-confound that sweep's
+                                  #   param-matched control)
+  lr: 5.0e-5                     # encoder LR
+  head_lr_mult: 10.0             # head LR = lr * head_lr_mult
+  mtl_lr: 5.0e-5                 # LR for MTLLoss's log_sigma param group (own group -- see its docstring)
+  plot_every: 20                 # epochs between per-task pred-vs-actual scatter plots (wandb). 0 disables.
+  n_plot_tasks: 3                 # scatter-plot the N densest + N sparsest tasks (by val label count)
+  batch_size: 32
+  grad_clip: 10.0
+  freeze_encoder_epochs: 10
+  lr_warmup_epochs: 10           # as in the Biogen recipe; counts from epoch 0, not from the
+                                 #   encoder unfreeze (see conf/finetune_biogen_adme.yaml)
+  encoder_warmup_epochs: 10      # ENCODER-ONLY LR ramp counted from the UNFREEZE epoch, unlike
+                                 #   lr_warmup_epochs above which counts from epoch 0. 0 = off.
+                                 #   10 == freeze_encoder_epochs: ramp the encoder in over
+                                 #   exactly as long as the head-only phase lasted. Damps the
+                                 #   training-error spike at unfreeze. NOT SWEEP-VALIDATED --
+                                 #   see conf/finetune_biogen_adme.yaml for the full rationale
+                                 #   and the sweep that would decide it.
+  grad_checkpointing: false
+  # See conf/finetune_biogen_adme.yaml for the full rationale on these
+  # (encoder_eval_mode / encoder_drop_path_rate / *_weight_decay / l2sp).
+  # encoder_weight_decay defaults 0.0 -- L2-SP is the intended regularizer
+  # for a pretrained encoder, but the key stays real/configurable (not
+  # hardcoded) since finetuning.admet.baseline's from-scratch MLPs reuse this same path.
+  # l2sp has no `scope` option: core.head is always randomly initialized, so
+  # there's no pretrained solution for L2-SP to anchor it to. encoder_eval_mode /
+  # mtl_weight_decay / l2sp below use the values selected on the Biogen cluster
+  # validation split; see conf/finetune_biogen_adme.yaml for the rationale.
+  encoder_eval_mode: true
+  encoder_drop_path_rate: null
+
+  epochs: 50
+  encoder_weight_decay: 0.0
+  trunk_weight_decay: 0.1
+  mtl_weight_decay: 0.1
+  no_decay_bias_norm: false
+  l2sp:
+    enabled: true
+    lambda: 1.0e-5
+    log_every: 500
+  ema: true
+  ema_decay: 0.99
+  scheduler: cosine
+  min_lr: 1.0e-7
+  patience: 50                   # == epochs above, so early stopping effectively never fires and
+                                 #   every run uses its full budget -- see
+                                 #   conf/finetune_biogen_adme.yaml for why that is safe (test
+                                 #   metrics come from the BEST-VAL epoch regardless)
+
+  train_from_scratch: false
+  save_best: true
+  save_last: true
+  # NOTE: same v1 limitation as finetune_chembl_mt.py -- no crash-resume, no
+  # force_retrain skip-if-cached. save_last writes a full checkpoint every
+  # epoch for manual inspection/restart; re-running always retrains from scratch.

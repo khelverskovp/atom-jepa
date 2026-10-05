@@ -1,0 +1,43 @@
+# @package hpo
+#
+# Optuna HPO settings for BASELINE 3/6 (RDKit descriptors -> MLP), pulled in
+# automatically by conf/model/rdkit_mlp.yaml's defaults list. Inert for the
+# ordinary finetuning/admet/baseline.py driver, which never reads cfg.hpo.
+#
+# THE SEARCH SPACE IS NOT DEFINED HERE -- it is composed from the shared
+# fragments conf/hpo/space/rdkit.yaml (deliberately empty: the descriptor
+# block has no tunable knob, see that file) and conf/hpo/space/mlp.yaml
+# (identical to the one morgan_mlp and morgan_rdkit_mlp use, so all three MLP
+# baselines get the same optimizer/architecture budget and any difference
+# between them is attributable to the FEATURES). Only the optuna RUN settings
+# below are per-study.
+#
+# Because nothing on the feature side is searched, the descriptor matrix is
+# built exactly once and reused by every trial in this study.
+#
+# LEAKAGE DISCIPLINE: identical to every other study here -- dedicated `seed`
+# disjoint from finetune.seeds, held-out test never read during HPO, selection
+# always on validation macro-MAE, and the optimized value never itself
+# reported. See finetuning/admet/hpo.py's module docstring.
+#
+# Run: python -m finetuning.admet.hpo dataset=biogen_adme model=rdkit_mlp hpo.n_trials=50
+
+defaults:
+  - space/rdkit@search_space    # SHARED -- conf/hpo/space/rdkit.yaml (empty by design)
+  - space/mlp@search_space      # SHARED -- conf/hpo/space/mlp.yaml
+  - _self_
+
+seed: 0
+sampler_seed: 0
+n_trials: 50
+metric: val.macro
+direction: minimize
+
+sampler: tpe
+n_startup_trials: 10
+warm_start: true
+pruner: hyperband
+pruner_min_resource: 10
+pruner_reduction_factor: 3
+
+final_full: false

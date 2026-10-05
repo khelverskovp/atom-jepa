@@ -1,0 +1,129 @@
+# QM9 fine-tuning
+
+misc:
+  device: cuda                 
+  seed: 42                     
+  log_every: 1000
+  checkpoint_dir: checkpoints  # encoder is loaded from / checkpoints written here
+  results_csv: results/qm9_results.csv
+
+data:
+  root: data/qm9
+  min_atoms: 1
+  max_atoms: null
+  limit: null
+  num_workers: 4
+
+wandb:
+  enabled: true
+  project: null                
+  entity: null                 
+  run_name: null               
+                               
+                               
+  mode: online                
+
+finetune:
+  # checkpoint to fine-tune. null -> ${misc.checkpoint_dir}/context_encoder.pt
+  ckpt_path: null
+
+  # --- target & objective ---
+  target: alpha                # any QM9 target: mu alpha homo lumo gap r2 zpve U0 U H G Cv
+  pool: sum                    
+                               
+  use_atom_ref: true                                   
+  standardize: false           
+                               
+
+  # --- readout head geometry ---
+  head_n_hidden: null          # null -> match encoder width
+  head_n_layers: 2           
+
+  # --- optimization ---
+  epochs: 1000                 
+  batch_size: 32               
+  lr: 1.0e-4                  
+  lr_warmup_steps: 10000       
+  head_lr_mult: 1.0            
+  weight_decay: 0.0            
+  adam_eps: 1.0e-7            
+  grad_clip: 5.0               
+  loss: mse                    
+
+  # --- LR scheduler: ReduceLROnPlateau ---
+  monitor: loss                            
+  lr_factor: 0.8               
+  lr_patience: 15              
+  min_lr: 1.0e-7              
+
+  # --- early stopping (on `monitor`) ---
+  patience: 50                
+
+  # --- eval-time weight averaging (EMA) ---
+  ema: false                   
+  ema_decay: 0.9               
+
+  # --- data split ---
+  seed: 42
+  split_seed: 1
+  train_size: 110000           
+  val_size: 10000              
+  val_frac: 0.1               
+  test_frac: 0.1
+
+  # --- bookkeeping ---
+  save_best: true              # write ${misc.checkpoint_dir}/finetuned_<target>.pt at best val MAE
+
+  # --- resume (restartable runs) ---
+  resume: false                # if true, restore FULL state from resume_path (model, EMA,
+                               #   optimizer, scheduler, epoch, step, RNG)
+  resume_path: null            # null -> ${misc.checkpoint_dir}/last_<target>.pt
+  save_last: true              # write last_<target>.pt every epoch (enables resume next time)
+
+  grad_checkpointing: false    # activation checkpointing in the encoder (saves memory, but slower)
+
+  # --- execution (same architecture and checkpoint weight names) ---
+  precision: bf16              # CUDA encoder AMP; geometry/norms/readout/loss stay FP32.
+                               # fp32 disables AMP. Non-CUDA devices fall back to FP32.
+  optimize_grid_mlp: true      # move bias-free grid channel linears into coefficient space
+  cuequivariance: true        # requires the CUDA-matching cuEquivariance packages
+  compile_blocks: true        # CUDA only; first train/eval batches include compilation cost
+  compile_mode: default       # torch.compile mode; default avoids requiring CUDA graphs
+  compile_dynamic: true       # variable numbers of atoms and edges across molecule batches
+
+  # --- train encoder from scratch ---
+  train_from_scratch: false    # true -> random-init encoder (same architecture/hyperparams
+                               #   read from ckpt_path), pretrained weights ignored.
+
+  # --- encoder freezing / gradual unfreeze ---
+  freeze_encoder_epochs: 5     
+  encoder_warmup_epochs: 5     
+  freeze_encoder_eval: true    
+  reset_schedule_on_unfreeze: true
+
+# ---------------------------------------------------------------------------
+# finetuning/probing/qm9_frozen_encoder_probe.py only. Everything that affects
+# comparability with the fine-tuner (target, split, seeds, atom_ref, standardize,
+# loss, monitor, schedule, early stopping) is read from `finetune:` above.
+# These keys only cover feature caching and head capacity; each falls back to
+# the finetune value when null.
+# ---------------------------------------------------------------------------
+probe_head:
+  layers: [all]                
+  standardize_features: true   
+                               
+  cache_dtype: float32         
+  cache_batch_size: 128      
+  head_n_hidden: null          
+  head_n_layers: null          
+
+  # null -> inherit the finetune value; override only if head-only training needs it
+  epochs: null
+  lr: null
+  batch_size: null
+  weight_decay: null
+  lr_warmup_steps: null
+  adam_eps: null
+  grad_clip: null
+  save_best: false             # write ${misc.checkpoint_dir}/probehead_<target>.pt
+  random_encoder: false        # true: probe a random-init encoder (control)

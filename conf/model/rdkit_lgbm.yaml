@@ -1,0 +1,49 @@
+# @package _global_
+# BASELINE 4/6: RDKit 2D descriptors -> LightGBM (one regressor per task).
+#
+# Usually the single strongest cheap baseline on ADME endpoints at this data
+# scale: dense, interpretable physicochemical descriptors are exactly the
+# input regime gradient-boosted trees excel at, and unlike the MLP they need
+# no scaling and handle the wildly heterogeneous descriptor ranges natively.
+# Expect this one to be the hardest of the six to beat.
+#
+# feature_scaling: none (below) -- matches rdkit_mlp: the descriptastorus
+# rdkit_2d_normalized featurizer already CDF-normalizes into [0,1], and trees
+# are scale-invariant besides.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=rdkit_lgbm
+
+defaults:
+  - /hpo: rdkit_lgbm
+  - _self_
+
+baseline:
+  kind: rdkit_lgbm
+  family: lgbm
+  featurizers: [rdkit_2d_normalized]
+  # descriptastorus CDF-normalized descriptors (200, all in [0,1]) -- byte-for-byte
+  # the Contrastive KERMT paper's own "RDKit Descriptor + MLP" featurization.
+  # feature_scaling: none because the CDF IS the normalization (and it is
+  # split-independent, so unlike a fitted StandardScaler there is nothing to
+  # leak). See data/datasets/admet/mol_features.py::rdkit_2d_normalized.
+  feature_scaling: none
+  in_dim: null
+  lgbm:
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    learning_rate: 0.05
+    num_leaves: 31
+    min_child_samples: 20
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    # 1e-8 not 0.0 (LightGBM's own default): the HPO search space declares
+    # these log-uniform with low=1e-8, and 0 is not a legal draw from a
+    # log distribution -- so a literal 0.0 here would be dropped from the
+    # warm-start trial. 1e-8 is numerically indistinguishable from no
+    # regularization and keeps the default inside its own search domain.
+    reg_alpha: 1.0e-8
+    reg_lambda: 1.0e-8
+    objective: l1
+    n_jobs: -1
+    verbose: -1

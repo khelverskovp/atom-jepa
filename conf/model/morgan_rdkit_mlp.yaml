@@ -1,0 +1,45 @@
+# @package _global_
+# BASELINE 5/6: Morgan fingerprint + RDKit descriptors (concatenated) -> MLP.
+#
+# The two feature views are complementary rather than redundant: Morgan
+# encodes WHICH substructures are present, the descriptors encode aggregate
+# physicochemical/topological properties. Concatenating them is the standard
+# "kitchen sink" tabular baseline and is what a well-tuned classical model
+# would actually use in practice -- so it is the fairest single opponent for
+# the pretrained 3D encoder.
+#
+# The feature vector is `n_bits + 200` wide, built by concatenating the two
+# featurizers IN LISTED ORDER (finetuning.admet.baseline._build_features). Each block is
+# cached separately, so this variant reuses the exact same on-disk Morgan and
+# descriptor caches as baselines 1-4 rather than recomputing anything.
+#
+# use_counts: true -- see morgan_mlp.yaml.
+# feature_scaling: quantile puts the count-Morgan block on the SAME [0,1] CDF
+# scale the rdkit_2d_normalized block already uses, rather than leaving it
+# unscaled next to a normalized block.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=morgan_rdkit_mlp
+
+defaults:
+  - /hpo: morgan_rdkit_mlp
+  - _self_
+
+baseline:
+  kind: morgan_rdkit_mlp
+  family: mlp
+  featurizers: [morgan, rdkit_2d_normalized]
+  # See finetuning.admet.baseline.fit_apply_feature_scaler's docstring for why quantile
+  # (CDF) rather than z-scoring: it puts the count-Morgan block on the same
+  # [0,1] scale rdkit_2d_normalized is already on, instead of z-scoring one
+  # block and leaving the other's CDF property untouched.
+  feature_scaling: quantile
+  in_dim: null                        # = morgan.n_bits + 200, derived
+  morgan:
+    radius: 2
+    n_bits: 1024
+    use_counts: true
+  mlp:
+    hidden_dim: 512
+    num_layers: 3
+    dropout: 0.1
+    activation: relu

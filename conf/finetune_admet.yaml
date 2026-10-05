@@ -1,0 +1,156 @@
+# Standalone Hydra config for ADMET fine-tuning (finetuning/admet/finetune_admet.py).
+#
+# Full fine-tuning of the JEPA-pretrained EquiformerV3 encoder + a fresh pooled
+# readout head over the TDC ADMET benchmark group (regression + classification).
+# Recipe ADAPTED for ADMET (not a QM9 clone): cosine LR (decoupled from the small
+# noisy val metric), discriminative LR (head >> encoder), standardized regression
+# targets with log-transform for the skewed PK sets, Huber/L1 loss, BCE+pos_weight
+# for imbalanced classification, and per-dataset overrides. Seed-averaged exactly
+# like the leaderboard (evaluate_many over seeds 1..5). No QM9 atom reference.
+#
+# Requires: pip install PyTDC rdkit scikit-learn scipy
+#
+# Run ALL 22 (from repo root): python -m finetuning.admet.finetune_admet
+# Run ONE dataset:             python -m finetuning.admet.finetune_admet data.datasets=Caco2_Wang
+# Subset:                      python -m finetuning.admet.finetune_admet 'data.datasets=[Caco2_Wang,BBB_Martins]'
+
+misc:
+  device: cuda                 # falls back to cpu automatically if cuda is unavailable
+  seed: 0
+  log_every: 1000
+  checkpoint_dir: checkpoint   # encoder loaded from / checkpoints + summary written here
+
+data:
+  tdc_path: data/admet                 # admet_group(path=...) download/cache dir
+  conformer_cache_dir: data/admet_conformers
+  conformer_seed: 42                   # fixed RDKit ETKDG seed (reproducible conformers)
+  conformer_prune_rms: -1      # RDKit EmbedMultipleConfs pruneRmsThresh (Angstrom); -1 disables pruning.
+                                #   Rigid molecules legitimately return FEWER than num_conformers
+                                #   once pruned -- see data/datasets/admet/admet_conformers.py's module docstring.
+  strip_multi_fragment_smiles: true    # keep only the largest fragment of salt/hydrate/mixture
+                                       #   SMILES before embedding (~3.6% of ADMET molecules; see
+                                       #   check_admet_fragmentation.py). false reproduces vanilla-
+                                       #   Uni-Mol-style whole-SMILES embedding (not recommended --
+                                       #   disconnected fragments land on top of each other, see
+                                       #   admet_conformers.py deviation 0)
+  num_workers: 4
+  datasets: null                       # null = all 22 | a single name | a list of names
+  num_conformers: 10  # conformers GENERATED + cached per molecule (Uni-Mol-style; see admet_conformers)
+  conformer_workers: -2  # process pool size for conformer generation (1 = sequential).
+                         #   Each molecule embeds independently, so
+                         #   this parallelizes across CPU cores. joblib-style negative
+                         #   values: -1 = all available CPUs (SLURM --cpus-per-task via
+                         #   sched affinity, not the host total), -2 = all minus one
+                         #   (default -- leaves a core free for the main process/IO).
+                         #   Only affects the one-time cache build.
+
+wandb:
+  enabled: true
+  project: molecule-jepa
+  entity: null                 # null -> your default wandb entity
+  run_name: unimol_y1_1conf                      # base; "-admet-<dataset>-s<seed>" appended per run
+  mode: online                         # online | offline | disabled
+
+finetune:
+  precision: bf16              # Encoder only; readout and loss remain FP32. CPU uses FP32.
+  cuequivariance: true         # CUDA: tested fused contractions; false uses native PyTorch.
+  optimize_grid_mlp: true
+  compile_blocks: true         # CUDA only; compilation adds startup cost.
+  compile_mode: default
+  compile_dynamic: true
+  # checkpoint to fine-tune. null -> ${misc.checkpoint_dir}/context_encoder.pt
+  ckpt_path: null
+  metric_override: null        # force a metric for ALL datasets (mae|spearman|roc-auc|pr-auc);
+                               #   null -> TDC's recommended metric per dataset
+
+  # === BASE knobs (per-dataset-tunable; overridden by the blocks below) ========
+  cutoff: null                 # graph + encoder radial cutoff (A). null -> the encoder's
+                               #   pretrained max_radius (6). Set/sweep a larger value to
+                               #   capture longer-range edges: this rebuilds the encoder at
+                               #   that radius (weights still load) and RESCALES the radial
+                               #   basis, so geometric edge features re-adapt in fine-tuning.
+                               #   Sweep with sweep_admet.py --space '{"cutoff":[6,8,10,12]}'.
+  pool: mean                   # mean | sum -- pooled readout aggregation over atoms
+  standardize: true            # z-score regression targets by TRAIN mean/std (auto-off for clf)
+  log_transform: false         # log1p the regression target before standardizing (skewed PK)
+  loss: huber                  # regression: huber | mae | mse  (classification always BCE)
+  head_dropout: 0.1            # dropout inside the readout MLP (small data -> regularize)
+  lr: 5.0e-5                   # encoder LR
+  head_lr_mult: 10.0           # head LR = lr * head_lr_mult (fresh head learns faster)
+  batch_size: 32
+  grad_clip: 100               # max grad norm; <= 0 disables
+  freeze_encoder_epochs: 0     # head-only warmup: encoder frozen for N epochs, then unfrozen
+  lr_warmup_epochs: 10          # linear LR warmup epochs before cosine decay
+  pos_weight: auto             # classification BCE: auto (=#neg/#pos) | none | <float>
+
+  grad_checkpointing: false
+  
+  # === per-TASK-TYPE defaults (override BASE) ==================================
+  defaults_regression:    {standardize: true,  pool: mean, loss: huber}
+  defaults_classification: {standardize: false, pool: mean, loss: bce}
+
+  # === per-DATASET overrides (override task-type) ==============================
+  # log-transform the three highly-skewed PK targets (metric is Spearman, so this
+  # only conditions training; it can't change the rank metric ceiling).
+  per_dataset:
+    vdss_lombardo:          {log_transform: true}
+    half_life_obach:        {log_transform: true}
+    clearance_microsome_az: {log_transform: true}
+    clearance_hepatocyte_az: {log_transform: true}
+
+  # === optimization (global) ===================================================
+  epochs: 50                 # max; early stopping usually ends sooner
+  weight_decay: 0.1
+  ema: true
+  ema_decay: 0.99
+
+  # --- LR scheduler ---
+  scheduler: cosine            # cosine (default) | plateau
+  min_lr: 1.0e-7               # cosine floor (and ReduceLROnPlateau floor)
+  # plateau-only knobs (ignored by cosine):
+  lr_factor: 0.5
+  lr_patience: 10
+
+  # --- early stopping (model selection still uses val; set >= epochs to disable) ---
+  patience: 10                 # cosine has a fixed end, so be more lenient than plateau
+
+  # --- data split / seed averaging (TDC leaderboard protocol) ---
+  seeds: [1, 2, 3, 4, 5]       # one model per seed; aggregated with evaluate_many
+  scaffold_split: true         # true (default) = scaffold-split train/valid pool (structurally
+                               #   disjoint, TDC leaderboard protocol); false = random i.i.d. split
+  force_retrain: true         # ignore cached per-seed predictions and retrain
+
+  # --- bookkeeping / resume ---
+  save_best: false              # finetuned_<dataset>_seed<seed>.pt at best val
+  save_last: false              # last_<dataset>_seed<seed>.pt every epoch (enables resume)
+  resume: false                # restore FULL per-seed state; completed seeds skipped via preds_*.npz
+
+  # --- baseline ---
+  train_from_scratch: false    # random-init encoder (same arch from ckpt_path); _scratch suffix
+
+  num_conformers: 10  # conformers USED: train samples one per epoch, val/test aggregate over them.
+                        #   null = all generated; 1 = single-conformer baseline. Capped to data.num_conformers.
+
+  # val/test conformer aggregation (train is unaffected -- it always samples ONE
+  # conformer per molecule per epoch). Only matters when num_conformers > 1:
+  #   avg_error (default): score every (molecule, conformer) prediction against
+  #     that molecule's label, then let the metric average over them -- for MAE
+  #     this is exactly the mean of the per-conformer errors.
+  #   ensemble: average the PREDICTIONS across a molecule's conformers first
+  #     (TTA-style), then score once per molecule.
+  # NOTE: the official TDC leaderboard number (per-seed test predictions fed to
+  # group.evaluate_many) always needs exactly one prediction per molecule, so it
+  # stays ensemble-averaged regardless of this toggle. This setting only changes
+  # the validation metric (drives model selection / early stopping) and the
+  # internal "test" metric tracked alongside it.
+  conformer_eval_mode: avg_error   # avg_error | ensemble
+
+  # End-of-run report only (does not affect training/model-selection above): on the
+  # best checkpoint, report BOTH avg_error and ensemble on val + test, plus the
+  # expected error at every ensemble size k=1..N_conformers (average, over k-of-N
+  # conformer subsets, of the metric from averaging that subset's predictions --
+  # k=1 is avg_error, k=N is ensemble, the rest interpolates between them). Exact
+  # combinatorial averaging when C(N,k) <= this many trials (always true at the
+  # project default of 10 conformers), Monte Carlo sampled above that. See
+  # ensemble_size_curve() in finetune_admet.py.
+  ensemble_curve_max_trials: 256

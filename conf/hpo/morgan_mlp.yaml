@@ -1,0 +1,64 @@
+# @package hpo
+#
+# Optuna HPO settings for BASELINE 1/6 (Morgan -> MLP), pulled in
+# automatically by conf/model/morgan_mlp.yaml's own defaults list -- so
+# `model=morgan_mlp` selects both the model and this search space. Inert for
+# the ordinary finetuning/admet/baseline.py driver, which never reads cfg.hpo.
+#
+# THE SEARCH SPACE IS NOT DEFINED HERE. It is composed from the shared
+# fragments in conf/hpo/space/, so every baseline using the same featurizer or
+# the same learner searches the SAME grid -- a cross-baseline comparison can
+# then never be confounded by one model having been given a wider search than
+# another. Edit conf/hpo/space/morgan.yaml or space/mlp.yaml and every study
+# that includes them moves together. Only the optuna RUN settings (budget,
+# sampler, pruner) are per-study, below.
+#
+# LEAKAGE DISCIPLINE (see finetuning/admet/hpo.py's module docstring for the full
+# rationale; identical for all six studies):
+#   * `seed` is a DEDICATED scaffold-split seed for HPO train/val only. It
+#     must stay disjoint from finetune.seeds (the [1,2,3,4,5] used for the
+#     final cross-model statistical comparison in finetuning/admet/compare_models.py) --
+#     otherwise that seed's later "independent" test result would have had
+#     its hyperparameters chosen using its own validation fold.
+#   * The held-out test split of `seed`'s scaffold partition is NEVER read
+#     during HPO (finetuning/admet/hpo.py passes the validation Dataset in the test_ds
+#     slot too, so nothing else is even touched).
+#   * Selection is always on validation macro-MAE, never test -- same rule
+#     finetuning/admet/experiments/sweep_admet.py already applies to the single-task TDC sweeps.
+#
+# Run: python -m finetuning.admet.hpo dataset=biogen_adme model=morgan_mlp hpo.n_trials=100
+
+defaults:
+  - space/morgan@search_space   # SHARED -- conf/hpo/space/morgan.yaml
+  - space/mlp@search_space      # SHARED -- conf/hpo/space/mlp.yaml
+  - _self_
+
+seed: 0                    # dedicated Biogen ADME scaffold-split seed for HPO -- see above
+sampler_seed: 0             # separate RNG seed for the Optuna sampler's own search strategy
+n_trials: 50
+metric: val.macro            # dotted path into train_multitask's return dict; lower is better
+direction: minimize
+
+sampler: tpe                  # tpe | gp | random
+n_startup_trials: 10            # random/quasi-random trials before tpe/gp switch to model-based
+                                 #   suggestions -- both need enough observed points to fit a
+                                 #   sane model, so relying on them from trial 0 is exactly the
+                                 #   inefficiency being asked about. This is Optuna's own default
+                                 #   for both samplers, exposed here so it's a visible, tunable
+                                 #   setting rather than an implicit one. See also `warm_start`
+                                 #   below, which is complementary (a specific known-good point,
+                                 #   not just "more random trials").
+warm_start: true                 # enqueue the CURRENT hand-picked config (conf/model/morgan_mlp.yaml
+                                  #   + conf/baseline.yaml) as a guaranteed early trial via
+                                  #   study.enqueue_trial, so the study always evaluates a
+                                  #   known-reasonable point instead of hoping n_startup_trials
+                                  #   random draws land near one.
+pruner: hyperband               # hyperband | median | none -- ASHA-style early stopping of
+                                 #   trials that are trailing the bracket at a given epoch
+pruner_min_resource: 10          # epochs before a trial becomes eligible for pruning
+pruner_reduction_factor: 3
+
+final_full: false                 # after the study finishes, retrain+evaluate the winning
+                                   # config with the real finetune.seeds via finetuning.admet.baseline's
+                                   # normal 5-seed driver (opt-in, mirrors sweep_admet.py's
+                                   # --final-full flag)

@@ -1,0 +1,54 @@
+# @package hpo
+#
+# Optuna HPO settings for BASELINE 7/8 (Morgan + Avalon + ErG + RDKit
+# descriptors -> LightGBM), pulled in automatically by
+# conf/model/morgan_avalon_erg_rdkit_lgbm.yaml's defaults list. Inert for the
+# ordinary finetuning/admet/baseline.py driver, which never reads cfg.hpo.
+#
+# THE SEARCH SPACE IS NOT DEFINED HERE -- this combined model composes the
+# SAME shared fragments its component featurizers/families use elsewhere:
+#   space/morgan  (identical to morgan_lgbm's)
+#   space/avalon  (new -- use_counts only; n_bits fixed, see that file)
+#   space/erg     (new -- fuzz_increment only; max_path fixed, see that file)
+#   space/rdkit   (identical to rdkit_lgbm's; empty by design)
+#   space/lgbm    (identical to morgan_lgbm's)
+# So this baseline is searched over exactly the union of what its parts are
+# searched over -- no per-study copy that could drift.
+#
+# This is the widest feature set in the battery (the literature's own
+# strong-fixed-descriptor recipe, Notwell & Wood arXiv:2310.00174) fed to the
+# model family it was designed for, so it gets a full LGBM trial budget.
+#
+# LEAKAGE DISCIPLINE: identical to every other study here -- dedicated `seed`
+# disjoint from finetune.seeds, held-out test never read during HPO, selection
+# always on validation macro-MAE, and the optimized value never itself
+# reported. See finetuning/admet/hpo.py's module docstring.
+#
+# NO PRUNER -- see conf/hpo/morgan_lgbm.yaml for the reasoning (no epoch
+# loop for Hyperband to prune along; LightGBM already early-stops per task
+# against the val split).
+#
+# Run: python -m finetuning.admet.hpo dataset=biogen_adme model=morgan_avalon_erg_rdkit_lgbm hpo.n_trials=100
+
+defaults:
+  - space/morgan@search_space   # SHARED -- conf/hpo/space/morgan.yaml
+  - space/avalon@search_space   # SHARED -- conf/hpo/space/avalon.yaml
+  - space/erg@search_space      # SHARED -- conf/hpo/space/erg.yaml
+  - space/rdkit@search_space    # SHARED -- conf/hpo/space/rdkit.yaml (empty by design)
+  - space/lgbm@search_space     # SHARED -- conf/hpo/space/lgbm.yaml
+  - _self_
+
+seed: 0
+sampler_seed: 0
+n_trials: 100
+metric: val.macro
+direction: minimize
+
+sampler: tpe
+n_startup_trials: 15
+warm_start: true
+pruner: none
+pruner_min_resource: 10        # unused while pruner: none
+pruner_reduction_factor: 3
+
+final_full: false

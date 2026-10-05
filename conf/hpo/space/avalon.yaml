@@ -1,0 +1,25 @@
+# SHARED Avalon-fingerprint search space.
+#
+# Included by every Avalon-using HPO config -- currently only
+# morgan_avalon_erg_rdkit_{mlp,lgbm} -- via their defaults lists, following
+# the same "edit once, every study moves together" convention as
+# space/morgan.yaml.
+#
+# n_bits is DELIBERATELY NOT SEARCHED, unlike Morgan's. Fingerprint-benchmark
+# literature (arXiv:2511.17078, hash-collision effects) reports Avalon's bit
+# length has little effect on downstream accuracy specifically -- r^2=0.993
+# between the 1024-bit and 16384-bit versions -- unlike Morgan, where folding
+# to too few bits measurably degrades performance. Searching it here would
+# spend trial budget on an axis the literature says is close to flat, and
+# also changes the concatenated in_dim per trial for no expected benefit.
+# Fixed at 1024 (MapLight's own value, data/datasets/admet/mol_features.py's default) in
+# conf/model/*.yaml.
+#
+# use_counts IS searched: GetAvalonCountFP and GetAvalonFP are separate
+# RDKit algorithms with different bit-setting logic (verified: NOT a strict
+# counts>=binary superset at matching indices, see
+# data/datasets/admet/mol_features.py::avalon_fingerprint's docstring), so which one is
+# better is a real, non-obvious empirical question -- unlike n_bits.
+#
+
+baseline.avalon.use_counts: {type: categorical, choices: [false, true]}

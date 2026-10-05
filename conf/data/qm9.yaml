@@ -1,0 +1,21 @@
+# @package _global_
+# QM9 molecules via torch_geometric (auto-downloads into `root`).
+# Loader: data/datasets/qm9.py.
+
+data:
+  dataset: qm9
+  root: data/qm9
+  limit: null           # null = use all; set an int for a quick subset
+  min_atoms: 1
+  max_atoms: null
+  num_workers: 16
+
+  epochs: 200
+  batch_size: 64
+  lr: 1e-4
+
+# QM9 samples carry their covalent bonds, which define the k-hop ego views;
+# ego_topology_cutoff is only the fallback for a molecule without bonds.
+mask:
+  ego_hops: [1, 2]
+  ego_topology_cutoff: 1.8

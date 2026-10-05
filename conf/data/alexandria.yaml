@@ -1,0 +1,42 @@
+# @package _global_
+# Alexandria (PBE) relaxed crystals, converted to LMDB shards once with
+#   python -m scripts.data.alexandria_to_lmdb --src data/alexandria/raw/<release> --out data/alexandria_lmdb
+# Loader: data/datasets/alexandria.py.
+
+data:
+  dataset: alexandria
+  src: data/alexandria_lmdb       # LMDB dir / dir of *.lmdb shards (raw json also works, slowly)
+  # keep only near-stable structures, in eV/atom above the convex hull:
+  # 0.0 -> on-hull, 0.05 -> within 50 meV/atom, null -> everything
+  e_above_hull_max: 0.05
+  min_atoms: 2
+  max_atoms: 100
+  limit: null
+  num_workers: 8
+  prefetch_factor: 4
+
+  epochs: 100
+  batch_size: 16
+  lr: 2.42e-4
+
+# Crystals have no bonds; k-hop ego views are cut on a periodic radius graph at
+# this bond-scale cutoff (first coordination shell).
+mask:
+  ego_hops: [1, 2, 3, 5]
+  ego_topology_cutoff: 3.5
+
+# Crystal runs probe on a Materials Project property instead of QM9.
+probe:
+  enabled: true
+  every: 5
+  every_steps: 5000
+  target: band_gap
+  mp_source: matminer
+  mp_dataset: matbench_mp_gap
+  mp_api_key: null
+  mp_file: null
+  limit: null
+  max_atoms: null
+  batch_size: 32
+  num_workers: 8
+  best_metric: probe/band_gap_val_mae

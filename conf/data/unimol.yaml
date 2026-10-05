@@ -1,0 +1,33 @@
+# @package _global_
+# Uni-Mol molecular pretraining data: LMDB(s) of pickled
+# {atoms, coordinates} records, one per molecule, with several 3D conformers each
+# and no bonds. Loader: data/datasets/unimol.py.
+
+data:
+  dataset: unimol
+  lmdb_paths:                     # one LMDB path or a list of them
+    - data/unimol/ligands/train.lmdb
+
+  # first | random | all. first/random with conformers_per_mol=1 gives one example
+  # per molecule (random resamples a conformer every epoch); all makes every
+  # conformer its own example (needs a one-time scan of the records).
+  conformer: first
+  conformers_per_mol: 1           # ignored when conformer=all
+  remove_hs: false
+  dedup_by: none                  # none | scaffold | smi (needs that field; one-time scan)
+  skip_unknown_elements: true     # skip corrupt records with a non-element symbol
+
+  limit: null                     # cap #examples for debugging
+  min_atoms: 1
+  max_atoms: null                 # setting min/max_atoms triggers a one-time scan
+  num_workers: 10
+
+  epochs: 10
+  batch_size: 16
+  lr: 2.42e-4
+
+# No bonds in the records, so k-hop ego views are cut on a radius graph at this
+# covalent-scale cutoff.
+mask:
+  ego_hops: [1, 3, 5, 10]
+  ego_topology_cutoff: 1.8

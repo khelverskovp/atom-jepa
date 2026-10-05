@@ -1,0 +1,67 @@
+# @package _global_
+# PROBE 1/4: frozen JEPA encoder, LAST-LAYER l=0 scalar -> LightGBM (one
+# regressor per task).
+#
+# A shallow probe of the pretrained encoder, not a fine-tune: the encoder is
+# frozen, its last transformer block's l=0 (rotation-invariant) scalar --
+# exactly what encoder.encode_nodes already returns, the same quantity every
+# JEPA fine-tuning driver uses -- is mean-pooled per molecule, cached to disk
+# once (data/datasets/admet/jepa_activations.py, via finetuning.admet.baseline._build_features's
+# "jepa_last_layer" featurizer), and then trained on through the SAME
+# LightGBM battery infra as the Morgan/RDKit baselines (finetuning/admet/training/gbm.py),
+# reporting the identical macro-MAE metric. See finetuning/admet/baseline.py's
+# `_JEPA_FEATURIZERS` dispatch and data/datasets/admet/jepa_activations.py's module
+# docstring for the full mechanics.
+#
+# feature_scaling: none -- the l=0 scalar here is already post-encoder's own
+# final equivariant norm (EquiformerV3Encoder.encode_nodes), so it's already
+# on a comparable scale across channels, unlike jepa_all_layers's raw
+# pre-final-norm per-block captures (see that sibling config).
+#
+# This is explicitly a BIOGEN CLUSTER probe (data.split=cluster below,
+# hardcoded, not left to a CLI override) -- the fixed KERMT/Adrian partition,
+# not the per-seed scaffold split baseline.yaml defaults to. See
+# data/datasets/admet/biogen_adme.py::get_split for why the two must never be compared.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=jepa_last_layer_lgbm
+
+baseline:
+  kind: jepa_last_layer_lgbm
+  family: lgbm                     # -> finetuning.admet.training.gbm.train_multitask_gbm
+  featurizers: [jepa_last_layer]
+  feature_scaling: none
+  in_dim: null                     # = encoder's num_channels (256 for the reference checkpoint), derived
+  jepa:
+    ckpt_path: molecules
+    pool: mean
+    batch_size: 64
+  lgbm:
+    # n_estimators is left HIGH and fixed on purpose: early_stopping_rounds on
+    # the val split picks the real number of rounds per task, which is the
+    # correct way to tune boosting (searching n_estimators directly would
+    # fight the early stopping).
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    learning_rate: 0.05
+    num_leaves: 31
+    min_child_samples: 20
+    subsample: 0.8
+    subsample_freq: 1              # >0 required for `subsample` to actually take effect in LightGBM
+    colsample_bytree: 0.8
+    reg_alpha: 1.0e-8
+    reg_lambda: 1.0e-8
+    objective: l1                  # L1 == MAE, matching the metric these baselines are scored on
+    n_jobs: -1
+    verbose: -1
+
+data:
+  split: cluster                             # explicitly a Biogen CLUSTER probe -- see module docstring
+  conformer_cache_dir: data/biogen_adme_conformers   # shares finetune_biogen_adme.py's cache dir (not
+                                              #   its num_conformers=10 cache file -- num_conformers: 1
+                                              #   below bakes a separate, smaller, single-conformer cache)
+  conformer_seed: 42
+  num_conformers: 1                          # one deterministic conformer per molecule -- no epoch-to-
+                                              #   epoch resampling needed for a frozen-encoder cache
+  conformer_prune_rms: -1
+  strip_multi_fragment_smiles: true
+  conformer_workers: -2                      # joblib-style negative n_workers (see admet_conformers.py)

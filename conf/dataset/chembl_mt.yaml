@@ -1,0 +1,37 @@
+# @package _global_
+# Per-dataset overrides for ChEMBL-MT, selected via `dataset=chembl_mt`
+# (the default). See conf/baseline.yaml for the shared baseline/finetune/
+# wandb/misc knobs this only adds to.
+#
+# ChEMBL-MT's 2 "folds" are OVERLAPPING train/val resamples of the same pool
+# (~89% shared train molecules), not independent seeds -- report per-fold, do
+# not average into one seed-style mean+-std. [0] or [1] alone is a valid,
+# cheaper choice while iterating.
+#
+# Smoke test (small, dense, fast):  python -m finetuning.admet.baseline data.which=biogen
+
+dataset: chembl_mt
+
+# `which` selects the 25-task ChEMBL-MT set or the 6-task Biogen companion set,
+# which are DIFFERENT benchmarks sharing one driver -- so it must appear in the
+# checkpoint dir / wandb run name, or a which=biogen run would silently
+# overwrite a which=public one.
+run_suffix: _${data.which}
+
+# misc.checkpoint_dir / wandb.run_name are NOT set here: conf/baseline.yaml
+# interpolates them from ${dataset} + ${baseline.kind}, so each of the 6
+# models gets its own directory automatically.
+
+data:
+  chembl_mt_path: data/chembl_mt       # data/datasets/admet/download/chembl_mt.py download dir
+  which: public                        # public = ChEMBL-MT (25 tasks) | biogen = smoke-test (6 tasks)
+  feature_cache_dir: data/chembl_mt_features
+
+finetune:
+  folds: [0, 1]
+  # Within each fold, additionally varies model init -- 2 folds x 2 seeds = 4
+  # independent runs, matching the Contrastive KERMT paper's own ChEMBL-MT
+  # protocol exactly. These 4 runs are the run-level samples finetuning.admet.stats' ANOVA
+  # + Tukey HSD model comparison uses (see finetuning/admet/compare_models.py).
+  seeds_per_fold: [0, 1]
+  log_transform: false         # README describes values as already log-scale (e.g. "log(mL/min/kg)")

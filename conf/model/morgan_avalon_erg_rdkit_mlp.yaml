@@ -1,0 +1,43 @@
+# @package _global_
+# BASELINE 8/8: Morgan + Avalon + ErG fingerprints + RDKit descriptors -> MLP.
+#
+# The MLP sibling of morgan_avalon_erg_rdkit_lgbm -- same literature-strong
+# feature set (Notwell & Wood, arXiv:2310.00174, MapLight), same
+# feature_scaling: quantile, so the two configs differ ONLY in model family
+# (family: mlp -> finetuning.admet.training.train.train_multitask, torch, shared trunk + masked
+# multi-task loss) rather than in what they're fed. See the lgbm sibling's
+# docstring for the feature rationale and the in_dim breakdown (2563 dims at
+# the defaults below).
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=morgan_avalon_erg_rdkit_mlp
+
+defaults:
+  - /hpo: morgan_avalon_erg_rdkit_mlp
+  - _self_
+
+baseline:
+  kind: morgan_avalon_erg_rdkit_mlp
+  family: mlp
+  featurizers: [morgan, avalon, erg, rdkit_2d_normalized]   # MapLight's own order
+  # See finetuning.admet.baseline.fit_apply_feature_scaler's docstring for why quantile
+  # (CDF) rather than z-scoring: it puts every block (count fingerprints AND
+  # the already-CDF-normalized rdkit_2d_normalized block) on one coherent
+  # [0,1] scale instead of z-scoring on top of a CDF.
+  feature_scaling: quantile
+  in_dim: null                   # = morgan.n_bits + avalon.n_bits + 21*erg.max_path + 200
+  morgan:
+    radius: 2
+    n_bits: 1024
+    use_counts: true
+  avalon:
+    n_bits: 1024                 # NOT searched by HPO -- see lgbm sibling's docstring
+    use_counts: true
+  erg:
+    fuzz_increment: 0.3          # HPO searches this
+    min_path: 1
+    max_path: 15                 # NOT searched -- changes in_dim per trial if swept
+  mlp:
+    hidden_dim: 512
+    num_layers: 3                # total Linear layers -- matches KERMT/chemprop's ffn_num_layers
+    dropout: 0.1
+    activation: relu

@@ -1,0 +1,24 @@
+# SHARED Morgan-fingerprint search space.
+#
+# Included by EVERY Morgan-using HPO config -- morgan_mlp, morgan_lgbm,
+# morgan_rdkit_mlp, morgan_rdkit_lgbm -- via their defaults lists:
+#
+#     defaults:
+#       - space/morgan@search_space
+#       - space/<learner>@search_space
+#       - _self_
+#
+# The point is enforcement, not just tidiness: the fingerprint is being
+# searched over the SAME grid for every baseline that uses it, so a
+# cross-baseline comparison can never be confounded by one model having been
+# allowed a richer featurization than another. Edit the ranges HERE and all
+# four studies move together; there is no per-study copy to drift.
+#
+# Featurizer params are rebuilt per trial (finetuning/admet/hpo.py builds features inside
+# the objective). data/datasets/admet/mol_features.py's cache keys on the featurizer kwargs
+# hash, so repeat configs are free and a stale matrix can never be reused.
+#
+
+baseline.morgan.radius:     {type: int, low: 2, high: 3}
+baseline.morgan.n_bits:     {type: categorical, choices: [1024, 2048]}
+baseline.morgan.use_counts: {type: categorical, choices: [false, true]}

@@ -1,0 +1,29 @@
+# SHARED ErG (Extended Reduced Graph) search space.
+#
+# Included by every ErG-using HPO config -- currently only
+# morgan_avalon_erg_rdkit_{mlp,lgbm} -- via their defaults lists, following
+# the same "edit once, every study moves together" convention as
+# space/morgan.yaml / space/avalon.yaml.
+#
+# fuzz_increment IS searched: RDKit's default (0.3, from Stiefl et al. 2006)
+# was tuned for SCAFFOLD HOPPING -- maximizing how much dissimilar-but-
+# pharmacophorically-related structures resemble each other. Property
+# prediction has no such requirement and may prefer a smaller, "crisper"
+# value (less fuzz between path lengths), so this is a genuine, non-obvious
+# tradeoff worth searching, not a correctness knob.
+#
+# max_path is DELIBERATELY NOT SEARCHED. Verified: ErG's output width is
+# EXACTLY 21 * max_path (210 at max_path=10, 315 at the RDKit default 15,
+# 420 at 20, 525 at 25 -- see data/datasets/admet/mol_features.py::erg_fingerprint's
+# docstring). Sweeping it per trial would change the concatenated vector's
+# in_dim on every trial; finetuning/admet/hpo.py's in_dim derivation (_feature_dim)
+# would handle that mechanically, but it adds pure width-variance to the
+# study with no expected accuracy payoff over the RDKit/MapLight default of
+# 15, so it stays fixed in conf/model/*.yaml.
+#
+# min_path is left at its RDKit default (1) in conf/model/*.yaml and is not
+# searched -- it has no reported effect distinct from fuzz_increment/max_path
+# in the ErG literature.
+#
+
+baseline.erg.fuzz_increment: {type: float, low: 0.1, high: 0.5}

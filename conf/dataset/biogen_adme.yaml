@@ -1,0 +1,40 @@
+# @package _global_
+# Per-dataset overrides for Biogen ADME, selected via `dataset=biogen_adme`.
+# See conf/baseline.yaml for the shared baseline/finetune/wandb/misc knobs
+# this only adds to.
+
+dataset: biogen_adme
+
+# --- split protocol (see data/datasets/admet/biogen_adme.py::get_split) ---
+#   scaffold (DEFAULT) -- this repo's own balanced Murcko scaffold split, redrawn
+#                         per seed, so seeds sample split difficulty too.
+#   cluster            -- the FIXED Adrian et al. partition (K-means k=5 on
+#                         PCA-reduced 2048-bit Morgan r=2; one whole cluster held
+#                         out), i.e. the benchmark Contrastive KERMT reports on.
+#                         The partition is fixed, so seeds vary model init ONLY
+#                         and data.split_sizes is ignored.
+# The two are DIFFERENT benchmarks over the same molecules (cluster is harder:
+# mean max-Tanimoto(test->train) 0.386 vs 0.431) -- never compare their numbers.
+# run_suffix keeps their outputs in separate directories automatically, and is
+# empty for scaffold so existing scaffold paths are unchanged.
+_split_suffix:
+  scaffold: ""
+  cluster: _cluster
+run_suffix: ${_split_suffix.${data.split}}
+
+# misc.checkpoint_dir / wandb.run_name are NOT set here: conf/baseline.yaml
+# interpolates them from ${dataset} + ${baseline.kind}, so each of the 6
+# models gets its own directory automatically.
+
+data:
+  biogen_adme_path: data/biogen_adme     # data/datasets/admet/download/biogen_adme.py download dir
+  split: scaffold                        # scaffold | cluster -- see above
+  cluster_path: data/chembl_mt           # dir holding export_biogen_cluster_split/
+  cluster_fold: 0                        # cluster mode only: which train/val fold (0|1)
+  split_sizes: [0.8, 0.1, 0.1]           # train/val/test, re-split fresh per seed
+  feature_cache_dir: data/biogen_adme_features
+
+finetune:
+  # one scaffold split + one model per seed; mean+-std reported
+  seeds: [1, 2, 3, 4, 5]
+  log_transform_tasks: []       # empty -- every Biogen ADME column is already log-scale

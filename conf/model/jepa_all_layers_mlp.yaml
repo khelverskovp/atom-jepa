@@ -1,0 +1,36 @@
+# @package _global_
+# PROBE 4/4: frozen JEPA encoder, ALL-LAYERS l=0 scalar -> multi-task MLP
+# (shared trunk + per-task heads).
+#
+# The MLP sibling of jepa_all_layers_lgbm -- same cached feature (l=0 scalar
+# from every transformer block, depth-concatenated; see that config's
+# docstring for the full mechanics and why feature_scaling is standard here,
+# not none), differing only in model family (family: mlp ->
+# finetuning.admet.training.train.train_multitask, torch, shared trunk + masked multi-task loss).
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=jepa_all_layers_mlp
+
+baseline:
+  kind: jepa_all_layers_mlp
+  family: mlp                      # -> finetuning.admet.training.train.train_multitask
+  featurizers: [jepa_all_layers]
+  feature_scaling: standard
+  in_dim: null                     # = encoder's num_layers * num_channels (2048 for the reference checkpoint), derived
+  jepa:
+    ckpt_path: molecules
+    pool: mean
+    batch_size: 64
+  mlp:
+    hidden_dim: 512
+    num_layers: 3
+    dropout: 0.1
+    activation: relu
+
+data:
+  split: cluster
+  conformer_cache_dir: data/biogen_adme_conformers
+  conformer_seed: 42
+  num_conformers: 1
+  conformer_prune_rms: -1
+  strip_multi_fragment_smiles: true
+  conformer_workers: -2

@@ -1,0 +1,23 @@
+# Install PyTorch with CUDA and PyTorch Geometric separately (see README.md).
+hydra-core
+omegaconf
+wandb
+e3nn
+lmdb
+ase
+pymatgen
+matminer
+matbench
+requests
+rdkit
+pandas
+scipy
+scikit-learn
+optuna
+lightgbm
+PyTDC
+tqdm
+matplotlib
+plotly
+huggingface_hub
+safetensors

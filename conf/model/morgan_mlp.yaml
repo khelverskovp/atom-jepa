@@ -1,0 +1,42 @@
+# @package _global_
+# BASELINE 1/6: Morgan fingerprint -> multi-task MLP.
+#
+# The original baseline was "Morgan fingerprints (RDKit) at radius 2, 1024
+# bits, passed to a 3-layer feed-forward network (same multi-task head and
+# loss as finetuning)" from the Contrastive KERMT paper's Appendix E. That
+# paper is explicit that fixed-descriptor baselines are meant to be a weak
+# floor ("Fixed descriptor models underperform the neural baselines in this
+# multi-task setting"), so this config now follows the literature's recipe
+# for a STRONG fingerprint baseline instead (Notwell & Wood, arXiv:2310.00174,
+# MapLight): COUNT fingerprints, not binary -- "count feature indicators" are
+# consistently reported stronger than binary presence bits.
+#
+# Hence use_counts: true.
+#
+# feature_scaling: quantile -- counts are unbounded integers, not on a common
+# 0/1 scale. See finetuning.admet.baseline.fit_apply_
+# feature_scaler's docstring for why a CDF/quantile transform is used here
+# rather than z-scoring (descriptastorus's own rationale for count-based
+# chemical features, which is exactly this case).
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=morgan_mlp
+
+defaults:
+  - /hpo: morgan_mlp   # this model's own search space; unread by finetuning/admet/baseline.py
+  - _self_
+
+baseline:
+  kind: morgan_mlp
+  family: mlp                   # -> finetuning.admet.training.train.train_multitask (torch)
+  featurizers: [morgan]         # keys into data/datasets/admet/mol_features.py's FEATURIZERS registry
+  feature_scaling: quantile     # see the header comment
+  in_dim: null                  # derived from the built features (finetuning.admet.baseline._feature_dim)
+  morgan:
+    radius: 2
+    n_bits: 1024
+    use_counts: true             # substructure occurrence counts (MapLight's own choice); HPO searches this
+  mlp:
+    hidden_dim: 512
+    num_layers: 3                # total Linear layers -- matches KERMT/chemprop's ffn_num_layers
+    dropout: 0.1
+    activation: relu

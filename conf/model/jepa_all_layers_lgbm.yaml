@@ -1,0 +1,57 @@
+# @package _global_
+# PROBE 2/4: frozen JEPA encoder, ALL-LAYERS l=0 scalar -> LightGBM (one
+# regressor per task).
+#
+# Same probe as jepa_last_layer_lgbm's sibling config, except the feature is
+# the l=0 scalar from EVERY transformer block (encoder.encode_nodes_all_layers,
+# models/jepa_equiformer.py), depth-concatenated and mean-pooled per molecule
+# -- num_layers*C wide (2048 = 8*256 for the reference checkpoint) instead of
+# just the final block's C. Exists because early-block representations may
+# encode information that only becomes USEFUL once the encoder is fine-tuned
+# (i.e. not linearly/shallowly readable from the final block alone) -- see
+# jepa_last_layer_lgbm.yaml's docstring for the rest of the mechanics, which
+# are otherwise identical (same cache-then-train pattern, same LightGBM
+# battery infra, same macro-MAE metric, same Biogen CLUSTER split).
+#
+# feature_scaling: standard (NOT none, unlike the last-layer sibling) --
+# these are RAW pre-final-norm per-block captures (see
+# EquiformerV3Encoder.encode_nodes_all_layers's docstring: the equivariant
+# final-norm module is only ever applied ONCE, to the last block's output,
+# not per-block), so magnitudes can differ across depth. A train-fit z-score
+# per column puts every layer on a comparable scale before boosting.
+#
+# Run: python -m finetuning.admet.baseline dataset=biogen_adme model=jepa_all_layers_lgbm
+
+baseline:
+  kind: jepa_all_layers_lgbm
+  family: lgbm                     # -> finetuning.admet.training.gbm.train_multitask_gbm
+  featurizers: [jepa_all_layers]
+  feature_scaling: standard
+  in_dim: null                     # = encoder's num_layers * num_channels (2048 for the reference checkpoint), derived
+  jepa:
+    ckpt_path: molecules
+    pool: mean
+    batch_size: 64
+  lgbm:
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    learning_rate: 0.05
+    num_leaves: 31
+    min_child_samples: 20
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    reg_alpha: 1.0e-8
+    reg_lambda: 1.0e-8
+    objective: l1
+    n_jobs: -1
+    verbose: -1
+
+data:
+  split: cluster
+  conformer_cache_dir: data/biogen_adme_conformers
+  conformer_seed: 42
+  num_conformers: 1
+  conformer_prune_rms: -1
+  strip_multi_fragment_smiles: true
+  conformer_workers: -2
