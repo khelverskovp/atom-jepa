@@ -17,7 +17,11 @@ Install PyTorch first ([pytorch.org](https://pytorch.org/get-started/locally/)),
 pip install atom-jepa            # structures as arrays or ase.Atoms
 pip install "atom-jepa[rdkit]"   # + SMILES input
 pip install "atom-jepa[all]"     # + SMILES and pymatgen input
+pip install "atom-jepa[cu12]"    # + cuEquivariance GPU kernels for CUDA 12 ([cu13] for CUDA 13)
 ```
+
+Extras combine, e.g. `"atom-jepa[all,cu12]"`; `python -m atom_jepa.info` shows what your
+machine supports and which kernel extra matches your PyTorch.
 
 ## Usage
 
@@ -85,11 +89,26 @@ for batch in loader:
     opt.zero_grad(); loss.backward(); opt.step()
 ```
 
-`model.set_grad_checkpointing(True)` trades compute for memory on large structures.
+`model.set_grad_checkpointing(True)` trades compute for memory on large structures. The
+paper's benchmark recipes are the fine-tuning scripts in the
+[GitHub repository](https://github.com/khelverskovp/atom-jepa#fine-tuning).
 
-The package runs the encoder in plain PyTorch (fp32, no cuEquivariance). The faster bf16 /
-compiled / cuEquivariance execution and the paper's benchmark recipes are in the
-fine-tuning scripts of the [GitHub repository](https://github.com/khelverskovp/atom-jepa#fine-tuning).
+### Execution
+
+On a CUDA GPU the encoder runs in bf16 and, if the kernels are installed, with
+cuEquivariance; otherwise it runs in plain fp32 PyTorch. The settings are printed when
+loading and can be set explicitly:
+
+```python
+model = AtomJEPA.from_pretrained("molecules")                        # auto
+# [atom-jepa] molecules: device=cuda, precision=bf16, cuequivariance=on, compile=off
+#   we recommend compile=True for larger jobs
+model = AtomJEPA.from_pretrained("molecules", compile=True)          # compile the blocks (CUDA)
+model = AtomJEPA.from_pretrained("molecules", precision="fp32", cuequivariance=False)  # plain
+```
+
+bf16 changes the embeddings slightly; use `precision="fp32"` for exact
+fp32 features. Compiling adds a one-off cost on the first batches.
 
 ## License
 

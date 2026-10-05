@@ -24,7 +24,7 @@ from atom_jepa.data.splits import split_indices
 from finetuning.common import load_pretrained_encoder, move_batch, resolve_device
 from finetuning.qm9.readouts import build_readout
 from finetuning.results_csv import append_row, encoder_tag
-from finetuning.execution import configure_execution
+from atom_jepa.execution import configure_execution
 from finetuning.optim import build_adamw, ema_update
 
 import contextlib   

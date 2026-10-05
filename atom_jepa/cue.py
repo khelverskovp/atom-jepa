@@ -29,7 +29,7 @@ def enable_cue(body, *, device, encoder_eval_mode):
         )
     except ImportError as exc:
         raise ImportError(
-            "Install the CUDA-matching packages in finetuning/requirements-cue-cu13.txt "
+            "Install the CUDA-matching kernels (pip install \"atom-jepa[cu12]\" or [cu13]) "
             "or set cuequivariance=false."
         ) from exc
 
@@ -59,4 +59,4 @@ def enable_cue(body, *, device, encoder_eval_mode):
         if isinstance(module, SO2MLinear):
             module.packed_gemm = True
     body.admet_cue_enabled = True
-    print("[finetuning] Enabled cuEquivariance grid/rotation fusions and packed SO2 GEMMs", flush=True)
+    print("[atom-jepa] Enabled cuEquivariance grid/rotation fusions and packed SO2 GEMMs", flush=True)

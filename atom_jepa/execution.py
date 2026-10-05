@@ -71,7 +71,7 @@ def configure_execution(ftc, model, ema_model, device):
         if use_cue:
             if not bool(ftc.get("optimize_grid_mlp", True)):
                 raise ValueError("cuEquivariance requires optimize_grid_mlp=true")
-            from finetuning.cue import enable_cue
+            from atom_jepa.cue import enable_cue
             enable_cue(body, device=device, encoder_eval_mode=bool(ftc.get("encoder_eval_mode", False)))
         body.set_grid_mlp_optimization(bool(ftc.get("optimize_grid_mlp", True)))
         if device.type == "cuda" and bool(ftc.get("compile_blocks", False)):

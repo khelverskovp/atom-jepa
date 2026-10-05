@@ -13,7 +13,7 @@ remain in `finetuning.admet`.
 | `training/preparation.py` | Data loaders, train-only normalization, task indices, and label weights |
 | `training/state.py` | Model and optimizer construction, learning rates, and training resume |
 | `training/epoch.py` | Forward loss, optimizer steps, and one training epoch |
-| `finetuning/execution.py` | Encoder precision, grid-MLP optimization, and block compilation |
+| `atom_jepa/execution.py`, `atom_jepa/cue.py` | Encoder precision, grid-MLP optimization, block compilation, and cuEquivariance |
 | `training/checkpoints.py` | Checkpoint selection, metadata, and saving |
 | `training/single_task.py` | Single-task training, validation selection, and train+validation refitting |
 | `training/helpers.py` | Scaling, tensor reduction, logging, schedules, gradient norms, and checkpoint helpers |

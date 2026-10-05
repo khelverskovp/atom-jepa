@@ -18,7 +18,7 @@ from finetuning.admet.training.checkpoints import (
     update_selection,
 )
 from finetuning.admet.training.epoch import train_epoch
-from finetuning.execution import configure_execution
+from atom_jepa.execution import configure_execution
 from finetuning.admet.training.evaluation import (
     build_result,
     evaluate_final,

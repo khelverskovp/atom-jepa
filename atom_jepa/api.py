@@ -71,17 +71,88 @@ class AtomJEPA(nn.Module):
         self.config = config
         self._collator = GraphCollator(cutoff=config.max_radius,
                                        max_num_elements=config.max_num_elements)
+        self.amp_dtype = None
+        self.execution = {"device": "cpu", "precision": "fp32", "cuequivariance": False,
+                          "compile": False}
+        self._execution_notes = {}
         self.eval()
 
     @classmethod
-    def from_pretrained(cls, name_or_path: str = "molecules", device=None) -> "AtomJEPA":
+    def from_pretrained(cls, name_or_path: str = "molecules", device=None,
+                        precision: str = "auto", cuequivariance: Union[str, bool] = "auto",
+                        compile: bool = False, verbose: bool = True) -> "AtomJEPA":
         """'molecules' / 'crystals' (downloaded from huggingface.co/atom-jepa/atom-jepa
-        and cached), or a local checkpoint. device defaults to CUDA when available.
-        The model starts in eval mode; call .train() to fine-tune it."""
+        and cached), or a local checkpoint. The model starts in eval mode; call .train()
+        to fine-tune it.
+
+        device defaults to CUDA when available. On a CUDA GPU, "auto" runs the encoder in
+        bf16 (if supported) with the cuEquivariance kernels (if installed, see
+        atom-jepa[cu12] / [cu13]); otherwise in plain fp32 PyTorch. compile=True compiles
+        the transformer blocks (CUDA only). The settings are fixed at load time."""
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         encoder, config, _ = load_pretrained_encoder(name_or_path, device)
-        return cls(encoder, config).to(device)
+        model = cls(encoder, config).to(device)
+        model._configure_execution(torch.device(device), precision, cuequivariance, compile)
+        if verbose:
+            print(f"[atom-jepa] {name_or_path}: {model.execution_summary()}", flush=True)
+        return model
+
+    def _configure_execution(self, device, precision, cuequivariance, compile):
+        from atom_jepa.cue import enable_cue
+        cuda = device.type == "cuda"
+        notes = {}
+
+        if precision == "auto":
+            precision = "bf16" if cuda and torch.cuda.is_bf16_supported() else "fp32"
+            if precision == "fp32":
+                notes["bf16"] = "needs a CUDA GPU with bf16 support"
+        if precision not in ("bf16", "fp32"):
+            raise ValueError(f"precision must be 'auto', 'bf16' or 'fp32', got {precision!r}")
+        if precision == "bf16" and not cuda:
+            raise ValueError("precision='bf16' needs a CUDA device")
+
+        if cuequivariance not in ("auto", True, False):
+            raise ValueError(f"cuequivariance must be 'auto', True or False, got {cuequivariance!r}")
+        use_cue = False
+        if cuequivariance is not False:
+            reason = _cue_unavailable(cuda)
+            if reason is None:
+                try:
+                    enable_cue(self.encoder.body, device=device, encoder_eval_mode=False)
+                    use_cue = True
+                except (ImportError, ValueError) as e:
+                    reason = str(e)
+            if reason is not None:
+                if cuequivariance is True:
+                    raise RuntimeError(f"cuequivariance=True but unavailable: {reason}")
+                notes["cuequivariance"] = reason
+        if cuda:
+            self.encoder.body.set_grid_mlp_optimization(True)
+
+        if compile and not cuda:
+            raise ValueError("compile=True needs a CUDA device")
+        if compile:
+            if use_cue:
+                self.encoder.body.edge_degree_embedding.compile(mode="default", dynamic=True)
+            self.encoder.body.compile_blocks(mode="default", dynamic=True)
+
+        self.amp_dtype = torch.bfloat16 if precision == "bf16" else None
+        self.execution = {"device": str(device), "precision": precision,
+                          "cuequivariance": use_cue, "compile": bool(compile)}
+        self._execution_notes = notes
+
+    def execution_summary(self) -> str:
+        """The execution settings, as printed when loading."""
+        e = self.execution
+        out = (f"device={e['device']}, precision={e['precision']}, "
+               f"cuequivariance={'on' if e['cuequivariance'] else 'off'}, "
+               f"compile={'on' if e['compile'] else 'off'}")
+        for key, note in self._execution_notes.items():
+            out += f"\n  {key} off: {note}"
+        if not e["compile"] and e["device"].startswith("cuda"):
+            out += "\n  we recommend compile=True for larger jobs"
+        return out
 
     @property
     def device(self) -> torch.device:
@@ -129,7 +200,9 @@ class AtomJEPA(nn.Module):
         hooks = [self.encoder.body.blocks[t - 1].register_forward_hook(
             lambda _m, _i, out, t=t: acts.__setitem__(t, out)) for t in blocks]
         try:
-            normed, _ = self.encoder.encode_nodes_full(batch)            # [N, sphere, C]
+            with torch.autocast(self.device.type, dtype=self.amp_dtype,
+                                enabled=self.amp_dtype is not None):
+                normed, _ = self.encoder.encode_nodes_full(batch)        # [N, sphere, C]
         finally:
             for h in hooks:
                 h.remove()
@@ -138,7 +211,7 @@ class AtomJEPA(nn.Module):
                                "(at least two atoms within the cutoff)")
 
         sphere = torch.cat([torch.arange(l * l, (l + 1) ** 2) for l in ls]).to(normed.device)
-        x = torch.stack([normed if t == "last" else acts[t] for t in sel], dim=1)[:, :, sphere]
+        x = torch.stack([(normed if t == "last" else acts[t]).float() for t in sel], dim=1)[:, :, sphere]
         if not per_atom:
             x = pool_nodes(x, batch["node_graph_index"], batch["num_graphs"], reduce=self.encoder.reduce)
         if invariant:
@@ -185,6 +258,21 @@ class AtomJEPA(nn.Module):
             return out[0] if single else out
         emb = torch.cat(out)
         return emb[0] if single else emb
+
+
+def _cue_unavailable(cuda: bool) -> Union[str, None]:
+    """Why the cuEquivariance kernels cannot be used here, or None."""
+    if not cuda:
+        return "needs a CUDA GPU"
+    import importlib.util
+    if importlib.util.find_spec("cuequivariance_ops_torch") is None:
+        major = (torch.version.cuda or "12").split(".")[0]
+        return f'kernels not installed (pip install "atom-jepa[cu{major}]")'
+    try:
+        import atom_jepa.models.equiformer_v3.admet_cue_ops  # noqa: F401
+    except ImportError as e:
+        return f"kernels failed to load ({e})"
+    return None
 
 
 def _select_layers(layers, num_layers) -> List:

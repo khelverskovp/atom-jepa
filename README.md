@@ -48,8 +48,10 @@ for downstream property prediction.</sub>
 atom-jepa/
 ├── atom_jepa/                the atom-jepa package: model, graphs, batching, checkpoint loading
 │   ├── api.py                AtomJEPA: load a pretrained encoder, embed structures, fine-tune
+│   ├── execution.py, cue.py  bf16, torch.compile and cuEquivariance execution
 │   ├── checkpoint.py         load released (Hugging Face) or local checkpoints
 │   ├── conformers.py         SMILES -> 3D conformers (RDKit ETKDGv3 + MMFF94)
+│   ├── info.py               python -m atom_jepa.info: what this machine supports
 │   ├── models/               JEPA encoder and predictor, EquiformerV3 backbone and layers
 │   └── data/                 graphs, masking, batching, splits (dataset-independent)
 ├── pretraining/
@@ -62,7 +64,6 @@ atom-jepa/
 │   ├── admet/                ADMET fine-tuning, baselines and HPO (see finetuning/admet/README.md)
 │   ├── probing/              frozen-encoder readout probe on QM9
 │   ├── common.py             helpers shared by the fine-tuning scripts
-│   ├── execution.py, cue.py  bf16, torch.compile and cuEquivariance execution
 │   └── requirements-cue-cu13.txt
 ├── data/                     dataset loaders (see data/README.md)
 ├── conf/                     Hydra configs
@@ -93,7 +94,7 @@ python -m pip install -r requirements.txt
 
 Runs log to Weights & Biases by default. Add `wandb.enabled=false` to any command to turn this off.
 
-**Fast fine-tuning (recommended).** By default, fine-tuning runs the encoder with bf16,
+**Fast fine-tuning (recommended).** By default, the fine-tuning scripts run the encoder with bf16,
 compiled transformer blocks and cuEquivariance kernels for speed. These defaults need
 the CUDA 13 packages:
 
@@ -129,7 +130,11 @@ Install [PyTorch](https://pytorch.org/get-started/locally/) first, then:
 pip install atom-jepa            # structures as arrays or ase.Atoms
 pip install "atom-jepa[rdkit]"   # + SMILES input
 pip install "atom-jepa[all]"     # + SMILES and pymatgen input
+pip install "atom-jepa[cu12]"    # + cuEquivariance GPU kernels for CUDA 12 ([cu13] for CUDA 13)
 ```
+
+Extras combine, e.g. `"atom-jepa[all,cu12]"`; `python -m atom_jepa.info` shows what your
+machine supports and which kernel extra matches your PyTorch.
 
 **Embeddings.**
 
@@ -175,10 +180,25 @@ for batch in loader:
     opt.zero_grad(); loss.backward(); opt.step()
 ```
 
-The package runs the encoder in plain PyTorch (fp32, no cuEquivariance). The faster
-bf16 / compiled / cuEquivariance execution and the paper's benchmark recipes are in the
-[fine-tuning scripts](#fine-tuning) of this repository; clone it to use them (see
-[Installation](#installation)).
+The benchmark recipes from the paper are the [fine-tuning scripts](#fine-tuning) of this
+repository.
+
+**Execution.**
+
+On a CUDA GPU the encoder runs in bf16 and, if the kernels are installed, with
+cuEquivariance; otherwise it runs in plain fp32 PyTorch. The settings are printed when
+loading and can be set explicitly:
+
+```python
+model = AtomJEPA.from_pretrained("molecules")                        # auto
+# [atom-jepa] molecules: device=cuda, precision=bf16, cuequivariance=on, compile=off
+#   we recommend compile=True for larger jobs
+model = AtomJEPA.from_pretrained("molecules", compile=True)          # compile the blocks (CUDA)
+model = AtomJEPA.from_pretrained("molecules", precision="fp32", cuequivariance=False)  # plain
+```
+
+bf16 changes the embeddings slightly; use `precision="fp32"` for exact
+fp32 features. Compiling adds a one-off cost on the first batches.
 
 ## Pretraining
 

@@ -29,7 +29,7 @@ from data.datasets.matbench import (
 )
 from atom_jepa.data.splits import split_indices
 
-from finetuning.execution import configure_execution
+from atom_jepa.execution import configure_execution
 from finetuning.optim import build_adamw, ema_update
 from finetuning.admet.training.regularization import build_l2sp
 

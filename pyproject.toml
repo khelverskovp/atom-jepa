@@ -33,6 +33,10 @@ dependencies = [
 rdkit = ["rdkit"]
 pymatgen = ["pymatgen"]
 all = ["rdkit", "pymatgen"]
+cu12 = ["cuequivariance>=0.10,<0.13", "cuequivariance-torch>=0.10,<0.13",
+        "cuequivariance-ops-cu12>=0.10,<0.13", "cuequivariance-ops-torch-cu12>=0.10,<0.13"]
+cu13 = ["cuequivariance>=0.10,<0.13", "cuequivariance-torch>=0.10,<0.13",
+        "cuequivariance-ops-cu13>=0.10,<0.13", "cuequivariance-ops-torch-cu13>=0.10,<0.13"]
 
 [project.urls]
 Homepage = "https://github.com/khelverskovp/atom-jepa"

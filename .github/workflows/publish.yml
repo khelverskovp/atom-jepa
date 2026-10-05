@@ -34,6 +34,7 @@ jobs:
           from ase.build import bulk
           from atom_jepa import AtomJEPA
           m = AtomJEPA.from_pretrained('molecules', device='cpu')
+          assert m.execution == {'device': 'cpu', 'precision': 'fp32', 'cuequivariance': False, 'compile': False}
           assert m.embed(['CCO', 'c1ccncc1']).shape == (2, 256)
           assert m.embed(['CCO', 'c1ccncc1'], layers='all', degrees='all').shape == (2, 8, 9, 256)
           assert m.embed('CCO', degrees='all', invariant=True).shape == (3, 256)
