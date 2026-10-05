@@ -175,7 +175,10 @@ for batch in loader:
     opt.zero_grad(); loss.backward(); opt.step()
 ```
 
-The benchmark recipes from the paper are the scripts under [Fine-tuning](#fine-tuning).
+The package runs the encoder in plain PyTorch (fp32, no cuEquivariance). The faster
+bf16 / compiled / cuEquivariance execution and the paper's benchmark recipes are in the
+[fine-tuning scripts](#fine-tuning) of this repository; clone it to use them (see
+[Installation](#installation)).
 
 ## Pretraining
 

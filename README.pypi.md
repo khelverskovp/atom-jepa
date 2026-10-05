@@ -87,6 +87,10 @@ for batch in loader:
 
 `model.set_grad_checkpointing(True)` trades compute for memory on large structures.
 
+The package runs the encoder in plain PyTorch (fp32, no cuEquivariance). The faster bf16 /
+compiled / cuEquivariance execution and the paper's benchmark recipes are in the
+fine-tuning scripts of the [GitHub repository](https://github.com/khelverskovp/atom-jepa#fine-tuning).
+
 ## License
 
 The code is released under the MIT License. The pretrained models are released under
