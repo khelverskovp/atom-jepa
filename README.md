@@ -137,6 +137,9 @@ model = AtomJEPA.from_pretrained("molecules", precision="fp32", cuequivariance=F
 bf16 changes the embeddings slightly; use `precision="fp32"` for exact fp32 features.
 Compiling adds a one-off cost on the first batches.
 
+On GPUs older than Ampere (e.g. V100, T4), load with `precision="fp32", cuequivariance=False`;
+the automatic choice can pick emulated bf16 and kernels these GPUs do not support.
+
 ## Using this repository
 
 The repository has the pretraining code, which the package does not include, and the
