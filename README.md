@@ -1,7 +1,7 @@
 # Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems
 
 <p align="center">
-  <a href="todo"><img src="https://img.shields.io/badge/Paper-TODO-blue" alt="Paper"></a>
+  <a href="https://arxiv.org/abs/2610.08400"><img src="https://img.shields.io/badge/Paper-arXiv%202610.08400-blue" alt="Paper"></a>
   <a href="todo"><img src="https://img.shields.io/badge/Website-TODO-green" alt="Website"></a>
   <a href="https://huggingface.co/atom-jepa/atom-jepa"><img src="https://img.shields.io/badge/Models-Hugging%20Face-orange" alt="Models"></a>
   <a href="https://pypi.org/project/atom-jepa/"><img src="https://img.shields.io/badge/PyPI-atom--jepa-blueviolet" alt="PyPI"></a>
@@ -297,4 +297,13 @@ The code is released under the [MIT License](LICENSE). The pretrained models on
 
 ## Citation
 
-_TODO_
+If you use Atom-JEPA, please cite the [paper](https://arxiv.org/abs/2610.08400):
+
+```bibtex
+@article{petersen2026atomjepa,
+  title   = {Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems},
+  author  = {Petersen, Kasper Helverskov and Tirsgaard, Rasmus Hannibal and Cornet, Fran{\c{c}}ois R. J. and Jordahn, Mikkel and Schmidt, Mikkel N.},
+  journal = {arXiv preprint arXiv:2610.08400},
+  year    = {2026}
+}
+```
