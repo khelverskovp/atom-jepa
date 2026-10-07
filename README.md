@@ -300,10 +300,13 @@ The code is released under the [MIT License](LICENSE). The pretrained models on
 If you use Atom-JEPA, please cite the [paper](https://arxiv.org/abs/2610.08400):
 
 ```bibtex
-@article{petersen2026atomjepa,
-  title   = {Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems},
-  author  = {Petersen, Kasper Helverskov and Tirsgaard, Rasmus Hannibal and Cornet, Fran{\c{c}}ois R. J. and Jordahn, Mikkel and Schmidt, Mikkel N.},
-  journal = {arXiv preprint arXiv:2610.08400},
-  year    = {2026}
+@misc{petersen2026atomjepajointembeddingpredictivearchitecture,
+      title={Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems},
+      author={Kasper Helverskov Petersen and Rasmus Hannibal Tirsgaard and François R J Cornet and Mikkel Jordahn and Mikkel N. Schmidt},
+      year={2026},
+      eprint={2610.08400},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2610.08400},
 }
 ```
