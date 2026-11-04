@@ -9,6 +9,10 @@
 
 Official implementation of **Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems**.
 
+> **Update (Nov 2026):** Atom-JEPA-Bio builds on Atom-JEPA with a second pretraining stage
+> that combines the Atom-JEPA objectives with bioassay supervision on roughly 1.5M PCBA
+> molecules. Load it with `from_pretrained("bio")`. Benchmark results: [blog post](BLOG_POST_URL).
+
 Atom-JEPA is a self-supervised pretraining method for 3D atomistic systems.
 It learns by predicting the latent representations of one part of a structure
 from another. The same recipe applies to both molecules and crystals.
@@ -47,8 +51,9 @@ The pretrained encoders are on Hugging Face at [atom-jepa/atom-jepa](https://hug
 |---|---|---|
 | `molecules` | molecules | Uni-Mol, 19M molecules |
 | `crystals` | inorganic crystals | Alexandria PBE 3D, 1.7M crystals |
+| `bio` | molecules | `molecules`, then a second stage with PCBA bioassays (~1.5M molecules, 1,089 assays) ([details](#second-stage-pretraining-atom-jepa-bio)) |
 
-Both the package and the repository's scripts load them by name and download the weights
+The package and the repository's scripts load them by name and download the weights
 on first use. The encoder is EquiformerV3, based on
 [atomicarchitects/equiformer_v3](https://github.com/atomicarchitects/equiformer_v3).
 
@@ -78,7 +83,7 @@ machine supports and which kernel extra matches your PyTorch.
 ```python
 from atom_jepa import AtomJEPA
 
-model = AtomJEPA.from_pretrained("molecules")      # or "crystals", or a local checkpoint
+model = AtomJEPA.from_pretrained("molecules")      # or "crystals", "bio", or a local checkpoint
 smiles = ["CCO", "c1ccncc1"]
 
 model.embed(smiles)                                  # [2, 256]        last layer, l=0
@@ -180,6 +185,7 @@ atom-jepa/
 ├── atom_jepa/                the atom-jepa package: model, graphs, batching, checkpoint loading
 │   ├── api.py                AtomJEPA: load a pretrained encoder, embed structures, fine-tune
 │   ├── execution.py, cue.py  bf16, torch.compile and cuEquivariance execution
+│   ├── mixed_precision.py, rocm_grid.py   selective bf16 and the ROCm grid kernel (AMD GPUs)
 │   ├── checkpoint.py         load released (Hugging Face) or local checkpoints
 │   ├── conformers.py         SMILES -> 3D conformers (RDKit ETKDGv3 + MMFF94)
 │   ├── info.py               python -m atom_jepa.info: what this machine supports
@@ -187,6 +193,8 @@ atom-jepa/
 │   └── data/                 graphs, masking, batching, splits (dataset-independent)
 ├── pretraining/
 │   ├── train.py              JEPA pretraining (single- and multi-GPU)
+│   ├── train2.py             second-stage pretraining with supervised bioassays (Atom-JEPA-Bio)
+│   ├── supervised.py         the bioassay head and loss used by train2.py
 │   ├── probe.py              frozen-encoder probes run during pretraining
 │   └── metrics.py            representation metrics and VICReg regularization
 ├── finetuning/
@@ -199,9 +207,11 @@ atom-jepa/
 ├── data/                     dataset loaders (see data/README.md)
 ├── conf/                     Hydra configs
 │   ├── pretrain.yaml         pretraining; conf/data/<dataset>.yaml selects the dataset
+│   ├── pretrain2.yaml        second-stage pretraining (pretrain2_lumi.yaml: AMD execution)
 │   ├── finetune_*.yaml       one per fine-tuning benchmark
 │   └── baseline.yaml, dataset/, model/, hpo/   ADMET baselines and HPO
-├── scripts/data/             Alexandria download, filtering and LMDB conversion
+├── scripts/data/             Alexandria and PCBA preparation and LMDB conversion
+├── scripts/lumi/             setup and launch files for LUMI (AMD MI250X)
 ├── notebooks/                SMILES -> Atom-JEPA embedding
 ├── assets/                   figures
 ├── pyproject.toml            package metadata; README.pypi.md is its PyPI description
@@ -237,11 +247,39 @@ Materials Project property for crystal runs. Checkpoints go to `checkpoints/`:
 
 To pretrain on another dataset, see [data/README.md](data/README.md).
 
+### Second-stage pretraining (Atom-JEPA-Bio)
+
+![Atom-JEPA-Bio second-stage pretraining](assets/atom-jepa-bio-figure.png)
+
+<sub>The context encoder is trained jointly on the Atom-JEPA objective and on property
+labels: its per-atom features are attention-pooled and passed to a property head, and the
+property loss is added to the Atom-JEPA loss. Both pathways share the encoder parameters.</sub>
+
+[`pretraining/train2.py`](pretraining/train2.py) continues a pretrained model with the
+Atom-JEPA objectives plus a supervised objective on the
+[PCBA](https://pubchem.ncbi.nlm.nih.gov/) bioassays: an attention-pooled head predicts
+1,089 assays with a focal loss per assay and uncertainty weighting
+([`pretraining/supervised.py`](pretraining/supervised.py)). The PCBA data is prepared
+with [MONROE](https://github.com/blazejba/monroe)'s `pcba_prep.py` (commit `de075ea`) and
+converted to LMDB with one RDKit conformer per molecule; see
+[data/README.md](data/README.md#pcba-second-stage-pretraining).
+
+```bash
+python -m pretraining.train2 data.root=data/pcba init.ckpt_path=/path/to/train_state_<run>.pt
+```
+
+`init.ckpt_path` takes a stage-1 train state, whose encoder and predictor are loaded, or
+an encoder (e.g. `molecules`), in which case the predictor starts from scratch.
+[`conf/pretrain2.yaml`](conf/pretrain2.yaml) holds the Atom-JEPA-Bio settings: 10 epochs
+from the stage-1 `molecules` train state, 32 molecules per GPU on 32 GPUs. Atom-JEPA-Bio
+was trained on [LUMI](https://www.lumi-supercomputer.eu/) with AMD MI250X GPUs (4 nodes,
+32 GCDs); the AMD setup is in [scripts/lumi/README.md](scripts/lumi/README.md).
+
 ### Fine-tuning
 
 These are the benchmark recipes from the paper. Each script takes a pretrained encoder
 as its checkpoint, given as either:
-- a released encoder, `molecules` or `crystals`, downloaded from
+- a released encoder, `molecules`, `bio` or `crystals`, downloaded from
   [Hugging Face](https://huggingface.co/atom-jepa/atom-jepa) and cached on first use; or
 - a local checkpoint from your own pretraining run, e.g. `checkpoints/context_encoder_<run>.pt`.
 
@@ -266,7 +304,8 @@ python -m finetuning.admet.finetune_biogen_adme finetune.ckpt_path=molecules
 python -m finetuning.admet.finetune_chembl_mt   finetune.ckpt_path=molecules
 python -m finetuning.admet.finetune_expansionrx finetune.ckpt_path=molecules
 ```
-Fingerprint/descriptor baselines, HPO and result aggregation are described in
+Fingerprint/descriptor baselines, HPO, result aggregation and the 5x5 cluster
+cross-validation on Biogen ADME and ExpansionRx used for Atom-JEPA-Bio are described in
 [finetuning/admet/README.md](finetuning/admet/README.md).
 
 **Frozen-encoder probe.** This trains only a readout head on cached encoder features,

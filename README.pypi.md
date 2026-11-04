@@ -9,6 +9,10 @@ the same recipe applies to both molecules and crystals. This package loads the
 pretrained encoders and turns 3D structures into embeddings. Pretraining and
 fine-tuning code is in the [GitHub repository](https://github.com/khelverskovp/atom-jepa).
 
+> **Update (Nov 2026):** Atom-JEPA-Bio builds on Atom-JEPA with a second pretraining stage
+> that combines the Atom-JEPA objectives with bioassay supervision on roughly 1.5M PCBA
+> molecules. Load it with `from_pretrained("bio")`. See the [project page](https://mjordahn.github.io/atom-jepa-website/).
+
 ## Installation
 
 Install PyTorch first ([pytorch.org](https://pytorch.org/get-started/locally/)), then:
@@ -28,15 +32,21 @@ machine supports and which kernel extra matches your PyTorch.
 ```python
 from atom_jepa import AtomJEPA
 
-model = AtomJEPA.from_pretrained("molecules")    # or "crystals"
+model = AtomJEPA.from_pretrained("molecules")    # or "crystals", "bio"
 
 emb = model.embed("CC(=O)Oc1ccccc1C(=O)O")       # one structure -> [256]
 embs = model.embed(["CCO", "c1ccncc1"])          # a list -> [2, 256]
 ```
 
-The weights (`molecules`, `crystals`) are downloaded from
+The weights are downloaded from
 [huggingface.co/atom-jepa/atom-jepa](https://huggingface.co/atom-jepa/atom-jepa) on
 first use and cached locally. A path to a local checkpoint also works.
+
+| name | domain | pretraining data |
+|---|---|---|
+| `molecules` | molecules | Uni-Mol, 19M molecules |
+| `crystals` | inorganic crystals | Alexandria PBE 3D, 1.7M crystals |
+| `bio` | molecules | `molecules`, then a second stage with PCBA bioassays (~1.5M molecules, 1,089 assays) |
 
 `embed` accepts any of these as one structure, or a list of them:
 
