@@ -1,7 +1,7 @@
 """Atom-JEPA: Joint-Embedding Predictive Architecture for 3D Atomistic Systems.
 
     from atom_jepa import AtomJEPA
-    model = AtomJEPA.from_pretrained("molecules")      # or "crystals"
+    model = AtomJEPA.from_pretrained("molecules")      # or "crystals", "bio"
     emb = model.embed(["CCO", "c1ccccc1"])             # [2, 256]
 """
 

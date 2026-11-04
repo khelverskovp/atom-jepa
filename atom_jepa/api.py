@@ -1,7 +1,7 @@
 """AtomJEPA: a pretrained Atom-JEPA encoder as a PyTorch module.
 
     from atom_jepa import AtomJEPA
-    model = AtomJEPA.from_pretrained("molecules")      # or "crystals", or a local checkpoint
+    model = AtomJEPA.from_pretrained("molecules")      # or "crystals", "bio", or a local checkpoint
     emb = model.embed(["CCO", "c1ccccc1"])             # [2, 256]
 """
 
@@ -81,7 +81,7 @@ class AtomJEPA(nn.Module):
     def from_pretrained(cls, name_or_path: str = "molecules", device=None,
                         precision: str = "auto", cuequivariance: Union[str, bool] = "auto",
                         compile: bool = False, verbose: bool = True) -> "AtomJEPA":
-        """'molecules' / 'crystals' (downloaded from huggingface.co/atom-jepa/atom-jepa
+        """'molecules' / 'crystals' / 'bio' (downloaded from huggingface.co/atom-jepa/atom-jepa
         and cached), or a local checkpoint. The model starts in eval mode; call .train()
         to fine-tune it.
 

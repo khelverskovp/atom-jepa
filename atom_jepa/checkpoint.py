@@ -14,16 +14,17 @@ from atom_jepa.models.jepa_equiformer import EquiformerV3Config, EquiformerV3Enc
 # Released pretrained encoders on the Hugging Face Hub: <name>/model.safetensors + config.json
 HF_REPO = "atom-jepa/atom-jepa"
 HF_REVISION = "main"
-PRETRAINED_MODELS = ("molecules", "crystals")
+PRETRAINED_MODELS = ("molecules", "crystals", "bio")
 
 
 def read_checkpoint(ckpt_path: str, device="cpu") -> dict:
     """Read a pretraining checkpoint as a dict with 'context_encoder' and 'eqv3_cfg'.
 
-    ckpt_path is a local .pt checkpoint, a local folder in the released format
+    ckpt_path is a local .pt checkpoint (a context-encoder checkpoint, or a training
+    state, whose online encoder is used), a local folder in the released format
     (model.safetensors + config.json), or the name of a released encoder
-    ('molecules' / 'crystals'), downloaded from the Hugging Face Hub on first use
-    and cached locally."""
+    ('molecules' / 'crystals' / 'bio'), downloaded from the Hugging Face Hub on first
+    use and cached locally."""
     if not os.path.exists(ckpt_path) and ckpt_path in PRETRAINED_MODELS:
         from huggingface_hub import hf_hub_download
         for f in ("config.json", "model.safetensors"):
@@ -77,7 +78,7 @@ def load_pretrained_encoder(ckpt_path: str, device, load_weights: bool = True
     encoder = EquiformerV3Encoder(cfg).to(device)
     if load_weights:
         sd = None
-        for key in ("context_encoder", "encoder", "model"):
+        for key in ("context_encoder", "encoder", "model", "online"):
             if key in ckpt and ckpt[key] is not None:
                 sd = ckpt[key]
                 break

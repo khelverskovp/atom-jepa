@@ -123,7 +123,7 @@ def finetune_biogen_adme(cfg: DictConfig) -> Dict:
     _, eqv3_cfg, ckpt = load_pretrained_encoder(ckpt_path, device, load_weights=False)
     encoder_ckpt = None
     if not bool(ftc.get("train_from_scratch", False)):
-        for key in ("context_encoder", "encoder", "model"):
+        for key in ("context_encoder", "encoder", "model", "online"):
             if key in ckpt and ckpt[key] is not None:
                 encoder_ckpt = ckpt[key]
                 break

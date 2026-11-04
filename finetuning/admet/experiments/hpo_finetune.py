@@ -114,7 +114,7 @@ def _run_hpo_jepa_biogen_adme(cfg: DictConfig) -> optuna.Study:
     _, eqv3_cfg, ckpt = load_pretrained_encoder(ckpt_path, device, load_weights=False)
     encoder_ckpt = None
     if not bool(cfg.finetune.get("train_from_scratch", False)):
-        for key in ("context_encoder", "encoder", "model"):
+        for key in ("context_encoder", "encoder", "model", "online"):
             if key in ckpt and ckpt[key] is not None:
                 encoder_ckpt = ckpt[key]
                 break

@@ -71,7 +71,7 @@ def extract_encoder_state_dict(ckpt: dict, verbose: bool = True):
     For full model state dictionaries, retain encoder.* keys, remove their prefix, and
     discard the task head. Pretrained encoder state dictionaries pass through."""
     sd = None
-    for key in ("context_encoder", "encoder", "model"):
+    for key in ("context_encoder", "encoder", "model", "online"):
         if key in ckpt and ckpt[key] is not None:
             sd = ckpt[key]
             break
