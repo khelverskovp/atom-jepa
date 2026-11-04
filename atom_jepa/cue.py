@@ -5,6 +5,8 @@ import torch
 
 def enable_cue(body, *, device, encoder_eval_mode):
     """Install derived operators without changing learned weights or checkpoint keys."""
+    if torch.version.hip:
+        raise ValueError("cuEquivariance requires NVIDIA CUDA; select the PyTorch/ROCm path")
     if getattr(body, "admet_cue_enabled", False):
         return
     from atom_jepa.models.equiformer_v3.activation import SeparableGateS2Activation_SwiGLU_Merge

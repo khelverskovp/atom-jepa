@@ -44,9 +44,10 @@ def resolve_amp_dtype(ftc, device):
     if precision is None:
         precision = ftc.get("amp_dtype", "bfloat16") if ftc.get("amp", False) else "fp32"
     dtypes = {"bf16": torch.bfloat16, "bfloat16": torch.bfloat16,
-              "fp16": torch.float16, "float16": torch.float16, "fp32": None}
+              "fp16": torch.float16, "float16": torch.float16, "fp32": None,
+              "no_radial": None}
     if precision not in dtypes:
-        raise ValueError("precision must be fp32, bf16, or fp16")
+        raise ValueError("precision must be fp32, bf16, fp16, or no_radial")
     dtype = dtypes[precision]
     if device.type != "cuda":
         return None
@@ -68,12 +69,22 @@ def configure_execution(ftc, model, ema_model, device):
         if body is None or not hasattr(body, "set_grid_mlp_optimization"):
             continue
         use_cue = device.type == "cuda" and bool(ftc.get("cuequivariance", False))
+        if use_cue and torch.version.hip:
+            raise ValueError("cuEquivariance is unavailable on HIP; set finetune.cuequivariance=false")
+        if use_cue and ftc.get("precision") == "no_radial":
+            raise ValueError("no_radial requires cuequivariance=false")
         if use_cue:
             if not bool(ftc.get("optimize_grid_mlp", True)):
                 raise ValueError("cuEquivariance requires optimize_grid_mlp=true")
             from atom_jepa.cue import enable_cue
             enable_cue(body, device=device, encoder_eval_mode=bool(ftc.get("encoder_eval_mode", False)))
         body.set_grid_mlp_optimization(bool(ftc.get("optimize_grid_mlp", True)))
+        if ftc.get("precision") == "no_radial":
+            configure_pretraining_execution(current.encoder, {
+                "precision_policy": "no_radial", "amp": False,
+                "optimize_packed_so2": bool(ftc.get("optimize_packed_so2", False)),
+                "optimize_rocm_grid": bool(ftc.get("optimize_rocm_grid", False)),
+            })
         if device.type == "cuda" and bool(ftc.get("compile_blocks", False)):
             if use_cue:
                 body.edge_degree_embedding.compile(
@@ -83,3 +94,32 @@ def configure_execution(ftc, model, ema_model, device):
                                 dynamic=bool(ftc.get("compile_dynamic", True)))
     configure_ema_buffers(model, ema_model)
     return GradScaler(device.type, enabled=dtype == torch.float16)
+
+def configure_pretraining_execution(model, options):
+    """Configure the plain-PyTorch/ROCm pretraining path without changing weights."""
+    policy = options.get("precision_policy", "fp32")
+    if policy not in ("fp32", "no_radial"):
+        raise ValueError("precision_policy must be fp32 or no_radial")
+    if policy == "no_radial" and options.get("amp", False):
+        raise ValueError("no_radial requires amp=false; only selected GEMMs use BF16")
+    body = model.body
+    if options.get("optimize_grid_mlp", False):
+        body.set_grid_mlp_optimization(True)
+    if options.get("optimize_packed_so2", False):
+        for module in body.modules():
+            if hasattr(module, "packed_gemm"):
+                module.packed_gemm = True
+    if options.get("optimize_rocm_grid", False):
+        if not torch.version.hip or next(model.parameters()).device.type != "cuda":
+            raise RuntimeError("The ROCm grid kernel requires an allocated HIP GPU")
+        from atom_jepa.rocm_grid import enable_rocm_grid
+        enable_rocm_grid(body)
+    if policy == "no_radial":
+        device = next(model.parameters()).device
+        if device.type != "cuda":
+            raise RuntimeError("no_radial requires a GPU with BF16 support")
+        with torch.cuda.device(device):
+            if not torch.cuda.is_bf16_supported():
+                raise RuntimeError("This GPU does not support BF16")
+        from atom_jepa.mixed_precision import enable_bf16_projections
+        enable_bf16_projections(model, policy)

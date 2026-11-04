@@ -88,7 +88,9 @@ class AtomJEPA(nn.Module):
         device defaults to CUDA when available. On a CUDA GPU, "auto" runs the encoder in
         bf16 (if supported) with the cuEquivariance kernels (if installed, see
         atom-jepa[cu12] / [cu13]); otherwise in plain fp32 PyTorch. compile=True compiles
-        the transformer blocks (CUDA only). The settings are fixed at load time."""
+        the transformer blocks (CUDA only). On HIP, auto uses FP32 without
+        cuEquivariance; precision="no_radial" selects local BF16 projections.
+        The settings are fixed at load time."""
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         encoder, config, _ = load_pretrained_encoder(name_or_path, device)
@@ -104,11 +106,12 @@ class AtomJEPA(nn.Module):
         notes = {}
 
         if precision == "auto":
-            precision = "bf16" if cuda and torch.cuda.is_bf16_supported() else "fp32"
+            precision = "bf16" if cuda and not torch.version.hip and torch.cuda.is_bf16_supported() else "fp32"
             if precision == "fp32":
-                notes["bf16"] = "needs a CUDA GPU with bf16 support"
-        if precision not in ("bf16", "fp32"):
-            raise ValueError(f"precision must be 'auto', 'bf16' or 'fp32', got {precision!r}")
+                notes["bf16"] = ("HIP defaults to FP32; select no_radial for selective BF16"
+                                 if torch.version.hip else "needs a CUDA GPU with bf16 support")
+        if precision not in ("bf16", "fp32", "no_radial"):
+            raise ValueError(f"precision must be 'auto', 'bf16', 'fp32' or 'no_radial', got {precision!r}")
         if precision == "bf16" and not cuda:
             raise ValueError("precision='bf16' needs a CUDA device")
 
@@ -127,6 +130,13 @@ class AtomJEPA(nn.Module):
                 if cuequivariance is True:
                     raise RuntimeError(f"cuequivariance=True but unavailable: {reason}")
                 notes["cuequivariance"] = reason
+        if precision == "no_radial":
+            if use_cue:
+                raise ValueError("no_radial requires cuequivariance=false")
+            from atom_jepa.execution import configure_pretraining_execution
+            configure_pretraining_execution(self.encoder, {
+                "precision_policy": "no_radial", "amp": False,
+            })
         if cuda:
             self.encoder.body.set_grid_mlp_optimization(True)
 
@@ -262,6 +272,8 @@ class AtomJEPA(nn.Module):
 
 def _cue_unavailable(cuda: bool) -> Union[str, None]:
     """Why the cuEquivariance kernels cannot be used here, or None."""
+    if torch.version.hip:
+        return "NVIDIA cuEquivariance kernels are unavailable on HIP; using PyTorch/ROCm"
     if not cuda:
         return "needs a CUDA GPU"
     import importlib.util
