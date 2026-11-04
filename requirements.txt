@@ -21,3 +21,4 @@ matplotlib
 plotly
 huggingface_hub
 safetensors
+pyarrow

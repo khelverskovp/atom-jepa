@@ -1,0 +1,24 @@
+# @package _global_
+# PCBA bioassays for second-stage pretraining (conf/pretrain2.yaml): ~1.4M training
+# molecules with one RDKit 3D conformer each and sparse binary labels over MONROE's
+# 1,089 assays. Built by scripts/data/pcba_monroe_prep.py + scripts/data/pcba_to_lmdb.py
+# (see data/README.md). Loader: data/datasets/pcba.py.
+
+data:
+  dataset: pcba
+  root: data/pcba                 # holds manifest.json and lmdb/{train,val}
+  split: train
+  limit: null                     # random subset of this many molecules (null = all)
+  subset_seed: 0
+  num_workers: 2
+
+  # Atom-JEPA-Bio: 32 GPUs x 32 molecules; lr = 7e-5 * sqrt(32)
+  epochs: 10
+  batch_size: 32
+  lr: 3.959797974644666e-4
+
+# No bonds in the records, so k-hop ego views are cut on a radius graph at this
+# covalent-scale cutoff (as for Uni-Mol, which has the same kind of conformers).
+mask:
+  ego_hops: [1, 3, 5, 10]
+  ego_topology_cutoff: 1.8

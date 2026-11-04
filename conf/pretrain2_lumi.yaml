@@ -1,0 +1,20 @@
+# Execution profile for AMD GPUs (LUMI, MI250X), with which Atom-JEPA-Bio was
+# trained. The objective, batch and schedule come from pretrain2.yaml; only how
+# the model executes changes:
+#   no_radial         BF16 projections; radial networks and parameters stay FP32
+#   packed SO(2)      the m>0 SO(2) GEMMs packed into one
+#   grid MLP          the S2-grid activation reassociated
+#   ROCm grid kernel  Triton kernel for the S2-grid product (atom_jepa/rocm_grid.py)
+#
+#   bash scripts/lumi/lumi.sh python -m pretraining.train2 --config-name pretrain2_lumi ...
+defaults:
+  - pretrain2
+  - _self_
+
+misc:
+  require_rocm: true
+  amp: false
+  precision_policy: no_radial
+  optimize_grid_mlp: true
+  optimize_packed_so2: true
+  optimize_rocm_grid: true

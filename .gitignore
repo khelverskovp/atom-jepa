@@ -33,8 +33,12 @@ data/*
 scripts/*
 !scripts/__init__.py
 !scripts/data/
+!scripts/lumi/
 
 # Python packaging build outputs
 build/
 dist/
 *.egg-info/
+
+# Local environment (scripts/lumi/env.example)
+.env

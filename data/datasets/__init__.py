@@ -9,6 +9,7 @@ To pretrain on a new dataset:
 """
 
 from data.datasets.alexandria import AlexandriaDataset
+from data.datasets.pcba import PCBADataset
 from data.datasets.qm9 import QM9Dataset
 from data.datasets.unimol import UniMolDataset
 
@@ -16,6 +17,7 @@ PRETRAINING_DATASETS = {
     "qm9": QM9Dataset,
     "unimol": UniMolDataset,
     "alexandria": AlexandriaDataset,
+    "pcba": PCBADataset,
 }
 
 

@@ -1,0 +1,156 @@
+# Second-stage Atom-JEPA pretraining (pretraining/train2.py): continue the stage-1
+# molecular run on PCBA with its JEPA objectives plus the supervised bioassay
+# objective. The defaults reproduce Atom-JEPA-Bio (the released `bio` encoder):
+# 10 epochs on 32 GPUs x 32 molecules (global batch 1,024), from the stage-1
+# train state of the released `molecules` encoder.
+#
+#   torchrun --nproc_per_node=8 -m pretraining.train2 init.ckpt_path=/path/to/train_state_stage1.pt
+#
+# On AMD GPUs use conf/pretrain2_lumi.yaml (see scripts/lumi/README.md).
+defaults:
+  - _self_
+  - data: pcba            # conf/data/pcba.yaml
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+# --------------------------------------------------------------------------- #
+# model: with init.ckpt_path the architecture comes from the checkpoint; only the
+# training-time settings below (dropout, drop_path_rate, gradient checkpointing)
+# and the predictor readout options are taken from here. cutoff must match the
+# checkpoint. The values are those of the stage-1 molecular run.
+# --------------------------------------------------------------------------- #
+model:
+  F: 256
+  pred_F: 128
+  num_layers: 8
+  pred_num_layers: 3
+  Lmax: 2
+  mmax: 2
+  cutoff: 6.0
+  num_rbfs: 128
+  dropout: 0.0
+  num_heads: 8
+  attn_hidden_channels: 64
+  attn_alpha_channels: 64
+  attn_value_channels: 16
+  ffn_hidden_channels: 512
+  edge_channels: 128
+  norm_type: merge_layer_norm
+  drop_path_rate: 0.05
+  predict_irreps: false
+  attn_grid_resolution_list: [14,8]
+  ffn_grid_resolution_list: [14,14]
+  max_num_elements: 128
+  readout_pool: mean
+  readout_use_mlp: true
+  readout_use_ln: false
+  grad_checkpointing: true
+  pred_grad_checkpointing: null   # null -> follow grad_checkpointing
+
+# k-hop ego views; set in conf/data/pcba.yaml
+mask:
+  ego_hops: ???
+  ego_topology_cutoff: ???
+
+# --------------------------------------------------------------------------- #
+# optimization (epochs / batch_size / lr in conf/data/pcba.yaml). batch_size is per
+# GPU and lr is not scaled with the number of GPUs: set both for your world size.
+# --------------------------------------------------------------------------- #
+optim:
+  epochs: ${data.epochs}
+  batch_size: ${data.batch_size}
+  lr: ${data.lr}
+  warmup_frac: 0.15         # linear LR warmup over this fraction of the steps, then cosine
+  grad_clip: 100
+  overlap_grad_sync: true
+  grad_bucket_mb: 25
+  vicreg_var_weight: 0.0
+  vicreg_cov_weight: 0.0
+  vicreg_var_gamma: 1.0
+  # stage 1 ended at tau ~0.9996 with a global batch of ~128; at a global batch of
+  # ~1,000, 0.998 keeps a similar EMA memory in molecules
+  ema_tau_start: 0.998
+  ema_tau_end: 1.0
+  weight_decay_start: 0.04
+  weight_decay_end: 0.04
+  symmetric: true
+  graph_loss_weight: 1.0    # graph-level objective (predict the other view's pooled target)
+  tgt_atom_loss_weight: 1.0 # target-atom objective (predict each atom of the other view)
+  jepa_weight: 1.0          # lambda for L_jepa (graph + tgt_atom + VICReg terms)
+  encoder_lr_scale: 1.0     # encoder peak LR = lr * encoder_lr_scale (predictor/heads use lr)
+
+# --------------------------------------------------------------------------- #
+# init: the stage-1 starting point. A full stage-1 train state (train_state_*.pt)
+# supplies the online encoder and the trained predictor; a context-encoder
+# checkpoint or a released encoder name (molecules) supplies the encoder only, and
+# the predictor starts from random init. The supervised head always starts from
+# random init. The encoder is frozen for the first predictor_warmup_steps
+# optimizer steps (they count towards optim.epochs).
+# --------------------------------------------------------------------------- #
+init:
+  ckpt_path: ???
+  load_predictor: true
+  predictor_warmup_steps: 1000
+
+# --------------------------------------------------------------------------- #
+# supervised: multi-task objective on the dataset's labels y [G, K] (NaN = missing),
+# from the context encoder on the full molecule: per-atom invariants (l=0 channels and
+# per-channel norms of each l>0) -> attention pooling -> Linear(len(degrees) * C, K)
+# -> masked focal loss per task -> uncertainty weighting (pretraining/supervised.py).
+# Total loss: optim.jepa_weight * L_jepa + supervised.weight * L_uw.
+# --------------------------------------------------------------------------- #
+supervised:
+  enabled: true
+  weight: 10                      # lambda for L_uw
+  degrees: [0, 1, 2]              # irrep degrees fed to the head (l>0 as norms); <= lmax
+  pool_heads: 8                   # attention-pooling heads (must divide len(degrees) * C)
+  pool_dropout: 0.0               # dropout on the pooling gate scores
+  focal_gamma: 2.0
+  focal_alpha: 0.25               # positive-class weight; null disables
+  uw_init: -0.5                   # initial s_t = log sigma_t^2
+  uw_mask_absent: true            # tasks without labels in the batch are left out of L_uw (false: MONROE)
+  uw_reduction: mean              # mean | sum (MONROE) over the included tasks; mean keeps L_uw O(1)
+
+# validation on the held-out split of the supervised dataset (rank 0), at the end of
+# every epoch and every misc.eval_every_steps; also selects context_encoder_best_<run>.pt
+val:
+  enabled: true
+  split: val
+  limit: null                     # cap the number of validation molecules
+  batch_size: 8                   # full molecules; the edge activations dominate memory
+  num_workers: 2
+  min_positives: 10               # AUROC only for tasks with >= this many positives
+  best_metric: val/auroc_mean
+  best_mode: max
+
+wandb:
+  enabled: true
+  project: null
+  entity: null
+  run_name: atom-jepa-bio
+  mode: online
+
+misc:
+  device: cuda              # falls back to cpu automatically if cuda is unavailable
+  seed: 0
+  log_every: 20
+  eval_every_steps: 0       # validation + checkpoint every N steps (0: end of epoch only)
+  grad_balance_every: 200   # log encoder-gradient norms/cosine of the JEPA vs supervised terms (0: off)
+  metric_every: 200         # (rankme, alpha_req) every N steps
+  checkpoint_dir: checkpoints
+  resume: false             # supervised runs resume only from a completed epoch:
+  resume_path: null         #   misc.resume_path=.../train_state_<run>_epochNNNN.pt
+  amp: false
+  amp_dtype: bfloat16       # only used if amp: true (and only float16 actually scales)
+  timing: true              # log data-wait / compute / grad-sync time per step
+  # execution (conf/pretrain2_lumi.yaml): fp32 | no_radial (BF16 projections, FP32
+  # radial networks and parameters), and the optional fused paths
+  precision_policy: fp32
+  optimize_grid_mlp: false
+  optimize_packed_so2: false
+  optimize_rocm_grid: false
+  require_rocm: false
