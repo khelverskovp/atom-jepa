@@ -11,7 +11,7 @@ fine-tuning code is in the [GitHub repository](https://github.com/khelverskovp/a
 
 > **Update (Nov 2026):** Atom-JEPA-Bio builds on Atom-JEPA with a second pretraining stage
 > that combines the Atom-JEPA objectives with bioassay supervision on roughly 1.5M PCBA
-> molecules. Load it with `from_pretrained("bio")`. See the [project page](https://mjordahn.github.io/atom-jepa-website/).
+> molecules. Load it with `from_pretrained("bio")`. See the [project page](https://mjordahn.github.io/atom-jepa-website/index.html).
 
 ## Installation
 

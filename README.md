@@ -2,7 +2,8 @@
 
 <p align="center">
   <a href="https://arxiv.org/abs/2610.08400"><img src="https://img.shields.io/badge/Paper-arXiv%202610.08400-blue" alt="Paper"></a>
-  <a href="https://mjordahn.github.io/atom-jepa-website/"><img src="https://img.shields.io/badge/Project-Page-green" alt="Project page"></a>
+  <a href="https://mjordahn.github.io/atom-jepa-website/index.html"><img src="https://img.shields.io/badge/Project-Page-green" alt="Project page"></a>
+  <a href="https://mjordahn.github.io/atom-jepa-website/atom-jepa-bio.html"><img src="https://img.shields.io/badge/Atom--JEPA--Bio-Page-teal" alt="Atom-JEPA-Bio page"></a>
   <a href="https://huggingface.co/atom-jepa/atom-jepa"><img src="https://img.shields.io/badge/Models-Hugging%20Face-orange" alt="Models"></a>
   <a href="https://pypi.org/project/atom-jepa/"><img src="https://img.shields.io/badge/PyPI-atom--jepa-blueviolet" alt="PyPI"></a>
 </p>
@@ -11,7 +12,7 @@ Official implementation of **Atom-JEPA: Joint-Embedding Predictive Architecture 
 
 > **Update (Nov 2026):** Atom-JEPA-Bio builds on Atom-JEPA with a second pretraining stage
 > that combines the Atom-JEPA objectives with bioassay supervision on roughly 1.5M PCBA
-> molecules. Load it with `from_pretrained("bio")`. Benchmark results: [blog post](BLOG_POST_URL).
+> molecules. Load it with `from_pretrained("bio")`. Benchmark results and method: [blog post](https://mjordahn.github.io/atom-jepa-website/atom-jepa-bio.html).
 
 Atom-JEPA is a self-supervised pretraining method for 3D atomistic systems.
 It learns by predicting the latent representations of one part of a structure
