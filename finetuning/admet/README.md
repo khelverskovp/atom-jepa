@@ -172,6 +172,37 @@ These drivers include test evaluation. Existing Hydra dataset, model, seed,
 split, and checkpoint overrides are unchanged. Add `--cfg job` to inspect a
 driver's composed configuration without training.
 
+## 5x5 cluster cross-validation (model-validation-central protocol)
+
+The Atom-JEPA-Bio results follow the protocol of the
+[model-validation-central atom-jepa study](https://github.com/patwalters/model-validation-central/tree/main/studies/atom-jepa)
+on Biogen ADME and ExpansionRx: 5 repeats of 5-fold cluster GroupKFold over the
+training molecules, the best epoch picked on the held-out fold, and predictions on the
+fixed test set (mean over ten conformers) for every one of the 25 folds. The study's
+published fold metrics are the comparison.
+
+```bash
+bash scripts/data/setup_external.sh        # study repositories at the release commits -> data/mvc
+
+# folds (checked against the study's published diagnostics), then fine-tuning per fold
+python -m finetuning.admet.eval_mvc prepare --dataset biogen        # or expansion
+python -m finetuning.admet.eval_mvc run --dataset biogen --arm atomjepa_bio --ckpt bio \
+    --shard 0/5                                                      # 5 jobs: --shard 0/5 ... 4/5
+python -m finetuning.admet.eval_mvc metrics --dataset biogen
+
+# frozen encoder + TabPFN 3 (pip install tabpfn==8.3.0; uses MONROE's TabPFN head)
+python -m finetuning.admet.eval_mvc_tabpfn embed  --dataset biogen --arm atomjepa_bio_tabpfn --ckpt bio
+python -m finetuning.admet.eval_mvc_tabpfn tabpfn --dataset biogen --arm atomjepa_bio_tabpfn
+
+# Tukey HSD figures, summary table and head-to-head against the study's methods
+python -m finetuning.admet.report_mvc --dataset biogen --arms atomjepa_bio atomjepa_bio_tabpfn
+```
+
+`--ckpt` takes a released encoder (`molecules`, `bio`) or a checkpoint path.
+Everything is written under `data/mvc/runs/<dataset>/`; set `MVC_ROOT` (and
+`MVC_CONFORMERS` for the conformer cache, default `data/eval_conformers`) to keep it
+elsewhere.
+
 ## Aggregate completed runs
 
 ```bash
